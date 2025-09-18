@@ -39,15 +39,17 @@ endif()
 if (PCMS_ENABLE_OMEGA_H)
   list(APPEND PCMS_SOURCES pcms/point_search.cpp)
   list(APPEND PCMS_HEADERS
-          pcms/adapter/omega_h/omega_h_field.h
+	  #pcms/adapter/omega_h/omega_h_field.h
           pcms/transfer_field.h
           pcms/uniform_grid.h
           pcms/point_search.h)
+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/pcms/adapter/omega_h/omega_h_field.h
+          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pcms/adapter/omega_h)
 endif ()
 
 find_package(Kokkos REQUIRED)
 find_package(perfstubs REQUIRED)
-
+find_package(spdlog REQUIRED)
 add_library(pcms_core ${PCMS_SOURCES})
 set_target_properties(pcms_core PROPERTIES
         OUTPUT_NAME pcmscore
@@ -73,11 +75,16 @@ if(PCMS_PRINT_ENABLED)
 endif()
 
 if (spdlog_FOUND)
-  add_definitions(-DPCMS_SPDLOG_ENABLED)
-  target_compile_definitions(pcms_core INTERFACE -DPCMS_SPDLOG_ENABLED)
-  target_link_libraries(pcms_core PUBLIC spdlog::spdlog)
-endif()
+  message(STATUS "Found spdlog, enabling PCMS_SPDLOG_ENABLED")
 
+  # Add the definition only when compiling pcms_core and targets that depend on it
+  target_compile_definitions(pcms_core PUBLIC PCMS_SPDLOG_ENABLED)
+
+  # Link spdlog to pcms_core publicly
+  target_link_libraries(pcms_core PUBLIC spdlog::spdlog)
+else()
+  message(WARNING "spdlog not found; PCMS_SPDLOG_ENABLED will not be defined")
+endif()
 
 ## export the library
 set_target_properties(pcms_core PROPERTIES
