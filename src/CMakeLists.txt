@@ -49,7 +49,7 @@ endif ()
 
 find_package(Kokkos REQUIRED)
 find_package(perfstubs REQUIRED)
-find_package(spdlog REQUIRED)
+#find_package(spdlog REQUIRED)
 add_library(pcms_core ${PCMS_SOURCES})
 set_target_properties(pcms_core PROPERTIES
         OUTPUT_NAME pcmscore
