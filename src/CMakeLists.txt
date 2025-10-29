@@ -31,7 +31,20 @@ configure_file(
   pcms/version.h.in
   pcms/version.h
 )
-
+#[[
+set(pcms_adapters
+	omega_h
+	xgc
+	mfem
+)
+foreach(  adapter in lists pcms_adapters)
+	string(TOUPPER ${adapter} UPPERNAME)
+	if(PCMS_ENABLE_${UPPERNAME})
+		message(STATUS "Enabling ${UPPERNAME} Adapter")
+	list(APPEND PCMS_SOURCES pcms/adapter/${adapter}/${adapter}_field.cpp)
+	list(APPEND PCMS_HEADERS pcms/adapter/${adapter}/${adapter}_field.h)
+]]
+	
 if(PCMS_ENABLE_XGC)
   list(APPEND PCMS_SOURCES pcms/adapter/xgc/xgc_reverse_classification.cpp)
   list(APPEND PCMS_HEADERS pcms/adapter/xgc/xgc_reverse_classification.h)

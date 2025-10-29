@@ -264,10 +264,13 @@ void migrateMeshElms(Omega_h::Mesh& mesh,
     auto class_dims_h = Omega_h::HostRead(class_dims);
     using ModelEnt = redev::ClassPtn::ModelEnt;
     std::map<ModelEnt, int> modelEntToRank;
+
     for (int i = 0; i < partition.ranks.size(); i++)
       modelEntToRank[partition.modelEnts[i]] = partition.ranks[i];
+
     typedef std::map<int, std::vector<int>> miv;
     miv elemsPerRank;
+
     for (int i = 0; i < mesh.nelems(); i++) {
       const ModelEnt ent({class_dims_h[i], class_ids_h[i]});
       REDEV_ALWAYS_ASSERT(modelEntToRank.count(ent));
@@ -276,6 +279,7 @@ void migrateMeshElms(Omega_h::Mesh& mesh,
     }
     // make sure we are not sending elements to ranks that don't exist
     REDEV_ALWAYS_ASSERT(elemsPerRank.size() == ohComm->size());
+    
     for (auto iter = elemsPerRank.begin(); iter != elemsPerRank.end(); iter++) {
       const auto dest = iter->first;
       REDEV_ALWAYS_ASSERT(dest <

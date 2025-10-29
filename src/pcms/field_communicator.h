@@ -212,8 +212,7 @@ private:
     //if (mpi_comm_ != MPI_COMM_NULL) {
       auto gids = field_adapter_.GetGids();
       if (redev_.GetProcessType() == redev::ProcessType::Client) {
-        const ReversePartitionMap reverse_partition =
-          field_adapter_.GetReversePartitionMap(Partition{redev_.GetPartition()});
+	      const ReversePartitionMap reverse_partition = field_adapter_.GetReversePartitionMap(Partition{redev_.GetPartition()});
         auto out_message = ConstructOutMessage(reverse_partition);
         comm_.SetOutMessageLayout(out_message.dest, out_message.offset);
         gid_comm_.SetOutMessageLayout(out_message.dest, out_message.offset);

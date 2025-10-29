@@ -225,8 +225,6 @@ public:
       redev_(SetUpRedev(isServer, std::move(partition)))
   {
     PCMS_FUNCTION_TIMER;
-
-    //printf("redev_ dim at coupler constructor %d\n", redev_.get_dim());
   }
   Application* AddApplication(
     std::string name, std::string path = "",
