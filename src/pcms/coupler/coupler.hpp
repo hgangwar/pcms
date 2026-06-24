@@ -11,11 +11,37 @@
 #include "pcms/utility/assert.h"
 #include "pcms/utility/common.h"
 #include "pcms/utility/profile.h"
+#include "pcms/coupler/global_communicator.h"
 #include <memory>
 
 namespace pcms
 {
+template <typename T>
+class GlobalDataInterface
+{
+public:
+  GlobalDataInterface( const std::string& name , MPI_Comm mpi_comm, redev::Channel& channel)
+    : mpi_comm_(mpi_comm), comm_(GlobalCommunicator<T>(name, mpi_comm_, channel)),
+      type_info_(typeid(T))
+  {
+    PCMS_FUNCTION_TIMER;
+  }
+  void Send(T* msg, std::string VarName, size_t msg_size, Mode mode = Mode::Synchronous)
+  {
+    PCMS_FUNCTION_TIMER;
+    comm_.Send(msg, VarName, msg_size, mode);
+  }
+  std::vector<T> Receive(std::string VarName, size_t msg_size, Mode mode = Mode::Synchronous)
+  {
+    PCMS_FUNCTION_TIMER;
+    return comm_.Receive(VarName, msg_size, mode);
+  }
+private:
+  MPI_Comm mpi_comm_;
+  const std::type_info& type_info_;
+  GlobalCommunicator<T> comm_;
 
+};
 class Application;
 
 template <typename T>
@@ -70,7 +96,8 @@ public:
   FieldHandle<T> AddField(std::string name, Field<T>&& field,
                           std::unique_ptr<FieldSerializer<T>> serializer,
                           bool participates = true);
-
+  template <typename T>
+  std::unique_ptr<GlobalDataInterface<T>> Add_GDI(std::string name, MPI_Comm mpi_comm);
   void SendField(const std::string& name,
                  redev::Mode mode = redev::Mode::Synchronous)
   {

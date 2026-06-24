@@ -61,5 +61,11 @@ void Application::SetLayoutOverlapMask(
 {
   layout_overlap_masks_[layout_name] = std::move(overlap_mask);
 }
+template <typename T>
+std::unique_ptr<GlobalDataInterface<T>> Application::Add_GDI(std::string name, MPI_Comm mpi_comm)
+{
+  PCMS_FUNCTION_TIMER;
+  return  std::make_unique<GlobalDataInterface<T>>(name, mpi_comm, channel_);
+}
 
 } // namespace pcms
