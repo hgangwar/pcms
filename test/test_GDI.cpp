@@ -2,8 +2,7 @@
 #include <Omega_h_mesh.hpp>
 #include <Omega_h_file.hpp>
 #include "test_support.h"
-#include "pcms/adapter/meshfields/mesh_fields_adapter.h"
-#include "pcms/coupler.h"
+#include "pcms/coupler/coupler.hpp"
 #include <pcms/utility/types.h>
 static constexpr bool done = true;
 static constexpr int COMM_ROUNDS = 1;
@@ -97,33 +96,33 @@ void xgc_coupler(MPI_Comm comm)
 
 int main(int argc, char** argv)
 {
-  MPI_Init(&argc, &argv); // MPI init
+  MPI_Init(&argc, &argv);
 
   OMEGA_H_CHECK(argc == 2);
-  const auto clientId = atoi(argv[1]);
+
+  const auto clientId = std::atoi(argv[1]);
   REDEV_ALWAYS_ASSERT(clientId >= -1 && clientId <= 1);
 
-  int color;
-  if (clientId == -1)
-    color = 0; // coupler
-  else if (clientId == 0)
-    color = 1; // client A
-  else if (clientId == 1)
-    color = 2; // client B
-  else
-    color = MPI_UNDEFINED;
-
-  MPI_Comm subcomm;
-  MPI_Comm_split(MPI_COMM_WORLD, color, 0, &subcomm);
+  MPI_Comm comm = MPI_COMM_WORLD;
 
   switch (clientId) {
-    case -1: xgc_coupler(subcomm); break;
-    case 0: xgc_delta_f(subcomm); break;
-    case 1: xgc_total_f(subcomm); break;
+    case -1:
+      xgc_coupler(comm);
+      break;
+
+    case 0:
+      xgc_delta_f(comm);
+      break;
+
+    case 1:
+      xgc_total_f(comm);
+      break;
+
     default:
-      std::cerr << "Unhandled client id (should be -1, 0,1)\n";
-      exit(EXIT_FAILURE);
+      std::cerr << "Unhandled client id; expected -1, 0, or 1\n";
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   }
+
   MPI_Finalize();
   return 0;
 }

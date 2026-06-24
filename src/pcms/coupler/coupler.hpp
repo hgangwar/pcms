@@ -20,27 +20,37 @@ template <typename T>
 class GlobalDataInterface
 {
 public:
-  GlobalDataInterface( const std::string& name , MPI_Comm mpi_comm, redev::Channel& channel)
-    : mpi_comm_(mpi_comm), comm_(GlobalCommunicator<T>(name, mpi_comm_, channel)),
-      type_info_(typeid(T))
+  GlobalDataInterface(const std::string& name,
+                      MPI_Comm mpi_comm,
+                      redev::Channel& channel)
+    : mpi_comm_(mpi_comm),
+      type_info_(typeid(T)),
+      comm_(name, mpi_comm_, channel)
   {
     PCMS_FUNCTION_TIMER;
   }
-  void Send(T* msg, std::string VarName, size_t msg_size, Mode mode = Mode::Synchronous)
+
+  void Send(T* msg,
+            std::string VarName,
+            size_t msg_size,
+            Mode mode = Mode::Synchronous)
   {
     PCMS_FUNCTION_TIMER;
-    comm_.Send(msg, VarName, msg_size, mode);
+    comm_.Send(msg, std::move(VarName), msg_size, mode);
   }
-  std::vector<T> Receive(std::string VarName, size_t msg_size, Mode mode = Mode::Synchronous)
+
+  std::vector<T> Receive(std::string VarName,
+                         size_t msg_size,
+                         Mode mode = Mode::Synchronous)
   {
     PCMS_FUNCTION_TIMER;
-    return comm_.Receive(VarName, msg_size, mode);
+    return comm_.Receive(std::move(VarName), msg_size, mode);
   }
+
 private:
   MPI_Comm mpi_comm_;
   const std::type_info& type_info_;
   GlobalCommunicator<T> comm_;
-
 };
 class Application;
 
@@ -98,6 +108,7 @@ public:
                           bool participates = true);
   template <typename T>
   std::unique_ptr<GlobalDataInterface<T>> Add_GDI(std::string name, MPI_Comm mpi_comm);
+
   void SendField(const std::string& name,
                  redev::Mode mode = redev::Mode::Synchronous)
   {
@@ -189,6 +200,13 @@ private:
   std::map<std::string, std::unique_ptr<OverlapMask>> layout_overlap_masks_;
 };
 
+template <typename T>
+std::unique_ptr<GlobalDataInterface<T>>
+Application::Add_GDI(std::string name, MPI_Comm mpi_comm)
+{
+  PCMS_FUNCTION_TIMER;
+  return std::make_unique<GlobalDataInterface<T>>(name, mpi_comm, channel_);
+}
 class Coupler
 {
 private:

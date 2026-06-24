@@ -7,6 +7,7 @@ set(PCMS_COUPLER_HEADERS
         field_exchange_planner.h
         partition.h
         overlap_mask.h
+        global_communicator.h
 )
 
 

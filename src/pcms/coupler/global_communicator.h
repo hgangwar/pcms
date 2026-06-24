@@ -1,7 +1,5 @@
 #ifndef PCMS_GLOBAL_COMMUNICATOR_H
 #define PCMS_GLOBAL_COMMUNICATOR_H
-#endif // PCMS_GLOBAL_COMMUNICATOR_H
-
 #include <redev.h>
 #include <pcms/utility/profile.h>
 namespace pcms
@@ -47,3 +45,4 @@ namespace pcms
     redev::BidirectionalComm<T> comm_;
   };
 }
+#endif // PCMS_GLOBAL_COMMUNICATOR_H

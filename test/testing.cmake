@@ -79,7 +79,7 @@ function(mpi_test TESTNAME PROCS EXE)
     list(APPEND TEST_COMMAND ${VALGRIND_EXECUTABLE} ${VALGRIND_ARGS})
   endif()
   list(APPEND TEST_COMMAND ${EXE} ${ARGN})
-  add_test(NAME ${TESTNAME} COMMAND ${TEST_COMMAND })
+  add_test(NAME ${TESTNAME} COMMAND ${TEST_COMMAND})
 endfunction(mpi_test)
 
 function(dual_mpi_test)
