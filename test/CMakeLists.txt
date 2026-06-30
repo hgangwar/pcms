@@ -127,6 +127,7 @@ if(PCMS_ENABLE_OMEGA_H)
           ARGS3
           0
   )
+
   set(d3d8p ${PCMS_TEST_DATA_DIR}/d3d/d3d-full_9k_sfc_p8.osh/)
   add_exe(test_twoClientOverlap)
   if(HOST_NPROC GREATER_EQUAL 28)
@@ -486,6 +487,13 @@ endif()
 if(PCMS_ENABLE_MFEM)
   add_executable(test_mfem_coupling test_mfem_coupling.cpp)
   target_link_libraries(test_mfem_coupling PUBLIC pcms::core mfem)
+
+  add_library(coupling_support coupling_support.cpp)
+  target_link_libraries(coupling_support PUBLIC pcms::core mfem)
+
+  add_exe(test_mfem_coupling2 test_mfem_coupling2.cpp)
+  target_link_libraries(test_mfem_coupling2  mfem pcms::transfer coupling_support)
+
   if(HOST_NPROC GREATER_EQUAL 2)
     dual_mpi_test(
       TESTNAME
@@ -508,6 +516,36 @@ if(PCMS_ENABLE_MFEM)
       1
       ARGS2
       0)
+    tri_mpi_test(
+            TESTNAME
+            test_mfem_coupling2
+            TIMEOUT
+            60
+            NAME1
+            app_A
+            EXE1
+            $<TARGET_FILE:test_mfem_coupling2>
+            PROCS1
+            1
+            ARGS1
+            0 ${PCMS_TEST_DATA_DIR}/box_A_marked.mesh CG Jacobi
+            NAME2
+            coupler
+            EXE2
+            $<TARGET_FILE:test_mfem_coupling2>
+            PROCS1
+            1
+            ARGS1
+            -1 ${PCMS_TEST_DATA_DIR}/box_A_marked.osh ${PCMS_TEST_DATA_DIR}/box_B_marked.osh CG Jacobi
+            NAME3
+            app_B
+            EXE3
+            $<TARGET_FILE:test_mfem_coupling2>
+            PROCS1
+            1
+            ARGS1
+            1 ${PCMS_TEST_DATA_DIR}/box_B_marked.mesh CG Jacobi
+    )
   endif()
 endif()
 

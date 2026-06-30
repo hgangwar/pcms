@@ -129,8 +129,8 @@ static redev::Partition MakeRCBPartition(int dim)
 static void app_A(MPI_Comm comm,
                   const std::string mesh_file,
                   support::ThermalParams params,
-                  string solver_type,
-                  string prec_type)
+                  std::string solver_type,
+                  std::string prec_type)
 {
   constexpr int order = 1;
 
@@ -182,11 +182,11 @@ static void app_A(MPI_Comm comm,
 
   app->AddLayout(field_name, layout);
 
-  auto handle = app->AddField(field_name, fs.CreateField<Real>());
+  auto handle = app->AddField(field_name, fs.CreateField<dtype>());
 
   auto gdi = app->Add_GDI<pcms::GO>("global_comm", comm);
 
-  GO flag = 1;
+  pcms::GO flag = 1;
   int itr = 1;
 
   do {
@@ -225,8 +225,8 @@ static void app_A(MPI_Comm comm,
 static void app_B(MPI_Comm comm,
                   const std::string mesh_file,
                   support::ThermalParams params,
-                  string solver_type,
-                  string prec_type)
+                  std::string solver_type,
+                  std::string prec_type)
 {
   constexpr int order = 1;
 
@@ -277,11 +277,11 @@ static void app_B(MPI_Comm comm,
 
   app->AddLayout(field_name, layout);
 
-  auto handle = app->AddField(field_name, fs.CreateField<Real>());
+  auto handle = app->AddField(field_name, fs.CreateField<dtype>());
 
   auto gdi = app->Add_GDI<pcms::GO>("global_comm", comm);
 
-  GO flag = 1;
+  pcms::GO flag = 1;
   int itr = 1;
 
   do {
@@ -371,15 +371,16 @@ void coupler(MPI_Comm comm,
 
   pcms::Real fill_value = 0.0;
 
-  auto layout_A = pcms::CreateLagrangeLayout(
-    mesh_A, 1, 1, pcms::CoordinateSystem::Cartesian, "global");
-  auto field_A = layout_A->CreateFieldReal();
-  field_A->SetOutOfBoundsMode(pcms::OutOfBoundsMode::FILL, fill_value);
+  auto fs_A = pcms::LagrangeFunctionSpace::FromMesh(
+    mesh_A, 1, 1, pcms::CoordinateSystem::Cartesian);
+  auto layout_A = fs_A.GetLayout();
+  auto field_A = fs_A.CreateField<dtype>(pcms::FieldMetadata{});
 
-  auto layout_B = pcms::CreateLagrangeLayout(
-    mesh_B, 1, 1, pcms::CoordinateSystem::Cartesian, "global");
-  auto field_B = layout_B->CreateFieldReal();
-  field_B->SetOutOfBoundsMode(pcms::OutOfBoundsMode::FILL, fill_value);
+
+  auto fs_B = pcms::LagrangeFunctionSpace::FromMesh(
+    mesh_B, 1, 1, pcms::CoordinateSystem::Cartesian);
+  auto field_B = fs_B.CreateField<dtype>(pcms::FieldMetadata{});
+  auto layout_B = fs_B.GetLayout();
 
   app_A->SetLayoutOverlapMask(
     field_name,
@@ -394,14 +395,19 @@ void coupler(MPI_Comm comm,
   app_A->AddLayout(field_name, layout_A);
   app_B->AddLayout(field_name, layout_B);
 
-  auto handle_A = app_A->AddField(field_name, field_A);
-  auto handle_B = app_B->AddField(field_name, field_B);
+  pcms::OutOfBoundsPolicy policy{pcms::OutOfBoundsMode::FILL, fill_value};
+  pcms::Interpolator<pcms::Real> interpolator_A2B(fs_A, fs_B, policy);
+
+  pcms::Interpolator<pcms::Real> interpolator_B2A(fs_B, fs_A, policy);
+
+  auto handle_A = app_A->AddField(field_name, std::move(field_A));
+  auto handle_B = app_B->AddField(field_name, std::move(field_B));
 
   auto gdi_A = app_A->Add_GDI<pcms::GO>("global_comm", comm);
   auto gdi_B = app_B->Add_GDI<pcms::GO>("global_comm", comm);
 
-  GO flag = 1;
-  GO done = 0;
+  pcms::GO flag = 1;
+  pcms::GO done = 0;
   int itr = 1;
 
   const float tol = 1e-3;
@@ -430,7 +436,7 @@ void coupler(MPI_Comm comm,
     std::printf("iteration=%d A abs error=%e\n", itr, errA);
 
     auto rms = support::ComputeRMS(Omega_h::Read<dtype>(dof_C), dof_A);
-    std::printf("rms received at coupler from A: %f\n", rms);
+    std::printf("rms received at coupler from A: %ld\n", rms);
 
     flag = (rms > tol);
 
@@ -440,8 +446,7 @@ void coupler(MPI_Comm comm,
 
     auto before =
       Omega_h::deep_copy(mesh_B.get_array<dtype>(0, field_name));
-
-    pcms::interpolate_field2(*field_A, *field_B);
+    interpolator_A2B.Apply(field_B, field_A);
 
     auto after = mesh_B.get_array<dtype>(0, field_name);
 
@@ -468,8 +473,7 @@ void coupler(MPI_Comm comm,
       mesh_B, "Coupler mesh_B after receive back from app B", itr);
 
     support::PrintTempStats(mesh_A, "Coupler mesh_A before interpolation", itr);
-
-    pcms::interpolate_field2(*field_B, *field_A);
+    interpolator_B2A.Apply(field_B, field_A);
 
     support::PrintTempStats(mesh_A, "Coupler mesh_A after interpolation", itr);
 
@@ -484,7 +488,7 @@ void coupler(MPI_Comm comm,
       gdi_A->Send(&done, "done", 1);
     });
 
-    std::printf("rms received at coupler after B->A interpolation: %f\n", rms);
+    std::printf("rms received at coupler after B->A interpolation: %ld\n", rms);
 
     done = 1;
 
@@ -498,7 +502,7 @@ void coupler(MPI_Comm comm,
       gdi_B->Send(&done, "done", 1);
     });
 
-    std::printf("sent flag %ld, with rms %f coupler to apps after itr = %d\n",
+    std::printf("sent flag %ld, with rms %ld coupler to apps after itr = %d\n",
                 static_cast<long>(flag), rms, itr);
 
     double errB = support::ComputeAbsoluteError(mesh_B);
