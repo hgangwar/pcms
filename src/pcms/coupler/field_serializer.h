@@ -22,7 +22,7 @@ public:
     auto owned = layout.GetOwnedHost();
     if (buffer.size() > 0) {
       for (LO i = 0; i < static_cast<LO>(data.size()); ++i) {
-        if (owned[i])
+        if (owned[i] && permutation[i] >= 0)
           buffer[permutation[i]] = data[i];
       }
     }

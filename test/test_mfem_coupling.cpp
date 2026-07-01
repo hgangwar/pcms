@@ -90,6 +90,9 @@ int RunClient(MPI_Comm comm)
 
   auto handle = app->AddField("field", fs.CreateField<Real>());
 
+  auto gdi = app->Add_GDI<pcms::GO>("global_comm", comm);
+  long residual = 1;
+
   // Seed the field so each vertex holds (gid + 1).
   auto gids = layout->GetGidsHost();
   const auto n = static_cast<size_t>(layout->GetNumOwnedDofHolder());
@@ -99,7 +102,7 @@ int RunClient(MPI_Comm comm)
   }
   handle.GetField().SetDOFHolderDataHost(pcms::make_const_array_view(values));
 
-  app->SendPhase([&]() { handle.Send(); });
+  app->SendPhase([&]() { handle.Send(); gdi->Send(&residual, "residual", 1); });
   return 0;
 }
 
@@ -111,7 +114,7 @@ int RunServer(MPI_Comm comm)
   mfem::ParFiniteElementSpace pfes(&pmesh, &fec);
   mfem::ParGridFunction gf(&pfes);
   gf = 0.0;
-
+  pcms::GO residual;
   pcms::Coupler cpl("mfem_overlap_coupler", comm, true,
                     MakeRCBPartition(pmesh.SpaceDimension()));
   auto* app = cpl.AddApplication("mfem_app");
@@ -121,6 +124,7 @@ int RunServer(MPI_Comm comm)
   auto layout = fs.GetLayout();
   app->AddLayout("field", layout);
   auto handle = app->AddField("field", fs.CreateField<Real>());
+  auto gdi = app->Add_GDI<pcms::GO>("global_comm", comm);
 
   // Seed the whole receiver field with a sentinel. The masked send only carries
   // the overlap DOFs, so a correct receive must overwrite only those and leave
@@ -134,8 +138,8 @@ int RunServer(MPI_Comm comm)
     handle.GetField().SetDOFHolderDataHost(pcms::make_const_array_view(seed));
   }
 
-  app->ReceivePhase([&]() { handle.Receive(); });
-
+  app->ReceivePhase([&]() { handle.Receive(); residual = gdi->Receive("residual", 1)[0];});
+  printf("Residual : %ld\n", residual);
   // Verify: every overlap vertex received the expected value. The overlap set
   // is recomputed from the identical mesh's attributes.
   auto overlap =
