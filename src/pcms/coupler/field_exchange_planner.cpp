@@ -80,7 +80,7 @@ static redev::LOs ConstructPermutation(
   int* length)
 {
   PCMS_FUNCTION_TIMER;
-  redev::LOs permutation(num_entries);
+  redev::LOs permutation(num_entries,-5);
   LO entry = 0;
   for (const auto& rank : reverse_partition) {
     entry += ent_offsets_len;
@@ -132,8 +132,7 @@ static redev::LOs ConstructPermutation(
       break;
   }
 
-  redev::LOs permutation;
-  permutation.reserve(local_gids.size());
+  redev::LOs permutation(local_gids.size(),-10);
   for (size_t e = 0; e < ent_offsets.size() - 1; ++e) {
     const auto start = ent_offsets[e];
     const auto end = ent_offsets[e + 1];
@@ -145,8 +144,9 @@ static redev::LOs ConstructPermutation(
       // value, rather than reading buffer[0]. Use find() rather than
       // operator[] so missing keys are not silently inserted as 0.
       const auto it = gid_to_buffer_index[e].find(local_gids[i]);
-      permutation.push_back(
-        it != gid_to_buffer_index[e].end() ? it->second : kUnreceivedDof);
+      if (it!=gid_to_buffer_index[e].end()) {
+        permutation[i] = it->second;
+      }
     }
   }
 
@@ -259,7 +259,9 @@ ExchangePlan GenericFieldExchangePlanner::BuildExchangePlan(
   auto out_msg = ConstructOutMessage(reverse_partition);
   plan.dest_ranks = std::move(out_msg.dest);
   plan.offsets = std::move(out_msg.offset);
-
+  for (int i=0; i<static_cast<LO>(plan.offsets.size()); ++i) {
+    printf("\n offsets at index: %d: %d",i, plan.offsets[i]);
+  }
   int length = 0;
   plan.permutation =
     ConstructPermutation(reverse_partition, gids.size(), &length);

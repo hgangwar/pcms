@@ -190,12 +190,12 @@ static void app_A(MPI_Comm comm,
   int itr = 1;
 
   do {
-    support::PrintTempStats(pmesh, *fem.x, "App A:: before solve", itr);
+    support::PrintTempStats(pmesh, *fem.x,overlap_view, "App A:: before solve", itr);
 
     auto residual = support::SolveSystem(fem, solver_type, prec_type, 1e-8, 500);
 
     support::SaveFields(outA, fem, itr);
-    support::PrintTempStats(pmesh, *fem.x, "App A:: after solve", itr);
+    support::PrintTempStats(pmesh, *fem.x, overlap_view,"App A:: after solve", itr);
 
     double err = support::ComputeAbsoluteError(pmesh, *fem.x);
     std::printf("App A:: abs error=%e\n", err);
@@ -285,21 +285,24 @@ static void app_B(MPI_Comm comm,
   int itr = 1;
 
   do {
-    //support::PrintTempStats(pmesh, *fem.x, "App B:: before receive", itr);
+    support::PrintTempStats(pmesh, *fem.x, overlap_view, "App B:: before receive", itr);
     app->ReceivePhase([&]() { handle.Receive(); });
+    support::PrintTempStats(pmesh, *fem.x, overlap_view, "App B:: after receive and before solve", itr);
 
     support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, right_bdr_attr, T_right);
+
+    support::SaveFields(outB, fem, itr);
 
     if (itr > 1 && flag == 0) {
       break;
     }
 
-    support::PrintTempStats(pmesh, *fem.x, "App B:: after receive and before solve", itr);
+
 
 
     auto residual = support::SolveSystem(fem, solver_type, prec_type, 1e-8, 500);
 
-    support::PrintTempStats(pmesh, *fem.x, "App B:: after solve", itr);
+    support::PrintTempStats(pmesh, *fem.x, overlap_view, "App B:: after solve", itr);
 
     auto err = support::ComputeAbsoluteError(pmesh, *fem.x);
     std::printf("App B:: abs error=%e\n", err);
@@ -365,7 +368,7 @@ void coupler(MPI_Comm comm,
   auto* app_A = cpl.AddApplication(app_A_name);
   auto* app_B = cpl.AddApplication(app_B_name);
 
-  pcms::Real fill_value = 0.0;
+  pcms::Real fill_value = 3;
 
   auto fs_A = pcms::LagrangeFunctionSpace::FromMesh(
     mesh_A, 1, 1, pcms::CoordinateSystem::Cartesian);
@@ -435,6 +438,13 @@ void coupler(MPI_Comm comm,
       handle_A.Receive();
       residual_A = gdi_A->Receive("residual", 1)[0];
     });
+    c1_view = handle_A.GetField().GetDOFHolderDataHost();
+    int counter=0;
+    for (int i=0; i<c1_view.size(); i++) {
+      //x`x`printf(" Index: %d, field value %f.\n",i, c1_view[i]);
+      if (c1_view(i)==0) {counter++;}
+    }
+    printf("Number of zeroes in the receive from A to C: %d\n", counter);
 
     std::printf("Itr : %d , coupler :: received residual at coupler from A = %ld\n", itr,
                 static_cast<long>(residual_A));
@@ -476,14 +486,18 @@ void coupler(MPI_Comm comm,
     std::cout << "Itr : "<<itr<<" , coupler :: interp rms C1 to C2 on C2 = " << support::ComputeRMS(c2_pview, c2_view)
               << "\n";
 
-
-    
     app_B->SendPhase([&]() {
       handle_B.Send();
       gdi_B->Send(&flag, "flag", 1);
       gdi_B->Send(&done, "done", 1);
     });
+    counter =0;
+    for (int i=0; i<c2_view.size(); i++) {
+      //printf(" Index: %d, field value %f.\n",i, c2_view[i]);
+      if (c2_view(i)==0) {counter++;}
+    }
 
+    printf("Number of zeroes in the send from C to B: %d\n", counter);
 
     app_B->ReceivePhase([&]() {
       handle_B.Receive();

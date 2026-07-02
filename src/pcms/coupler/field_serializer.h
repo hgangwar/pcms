@@ -20,13 +20,28 @@ public:
   {
     auto data = field.GetDOFHolderDataHost();
     auto owned = layout.GetOwnedHost();
-    if (buffer.size() > 0) {
-      for (LO i = 0; i < static_cast<LO>(data.size()); ++i) {
-        if (owned[i] && permutation[i] >= 0)
-          buffer[permutation[i]] = data[i];
+    for (int i=0; i<static_cast<LO>(owned.size()); i++) {
+      if (owned[i] ==0) {
+        printf("At index: %d, owned is not zero.\n", i);
       }
     }
-    return static_cast<int>(data.size());
+    assert(owned.size() == permutation.size());
+    //for (int i=0; i<static_cast<LO>(permutation.size()); i++) {
+    //  printf("permutation value at index %d: %d\n", i, permutation[i]);
+    //}
+    int counter= 0;
+
+      for (LO i = 0; i < static_cast<LO>(data.size()); ++i) {
+        if (owned[i] && permutation[i] >= 0) {
+          if (buffer.size() > 0) {
+            buffer[permutation[i]] = data[i];
+          }
+          counter++;
+        }
+      }
+
+    //return static_cast<int>(data.size());
+    return counter;
   }
 
   virtual void Deserialize(

@@ -66,7 +66,6 @@ void MFEMVertexFieldData::SetDOFHolderDataHost(
       true_values[lt] = static_cast<double>(data[v]);
     }
   }
-
   gf_.SetFromTrueDofs(true_values);
 }
 
