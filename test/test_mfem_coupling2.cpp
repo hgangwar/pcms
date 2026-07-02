@@ -141,8 +141,10 @@ static void app_A(MPI_Comm comm,
 
   support::FEMSystem fem = support::Init_FEMSystem(&pmesh, order, params.kappa);
 
-  const int left_bdr_attr = 1;
-  const int right_bdr_attr = 3;
+  const int bottom_bdr_attr = 1;
+  const int left_bdr_attr   = 3;  // x = 0.4 physical left side
+  const int right_bdr_attr  = 5;  // x = 1 overlap/interface side
+  const int top_bdr_attr    = 7;
   const pcms::LO overlap_attr = 1;
 
   mfem::Array<int> ess_bdrA(pmesh.bdr_attributes.Max());
@@ -188,13 +190,15 @@ static void app_A(MPI_Comm comm,
 
   pcms::GO flag = 1;
   int itr = 1;
-
+  pcms::GO done = 0;
   do {
     support::PrintTempStats(pmesh, *fem.x,overlap_view, "App A:: before solve", itr);
 
+    support::SaveFields(outA, fem, itr);
+
     auto residual = support::SolveSystem(fem, solver_type, prec_type, 1e-8, 500);
 
-    support::SaveFields(outA, fem, itr);
+    support::SaveFields(outA, fem, itr+1);
     support::PrintTempStats(pmesh, *fem.x, overlap_view,"App A:: after solve", itr);
 
     double err = support::ComputeAbsoluteError(pmesh, *fem.x);
@@ -208,9 +212,7 @@ static void app_A(MPI_Comm comm,
     app->ReceivePhase([&]() { handle.Receive(); });
 
     app->ReceivePhase([&]() {
-      auto done = gdi->Receive("done", 1)[0];
-
-      while (!done) {
+    while (!done) {
         sleep(1);
         done = gdi->Receive("done", 1)[0];
       }
@@ -237,8 +239,10 @@ static void app_B(MPI_Comm comm,
 
   support::FEMSystem fem = support::Init_FEMSystem(&pmesh, order, params.kappa);
 
-  const int left_bdr_attr = 1;
-  const int right_bdr_attr = 3;
+  const int bottom_bdr_attr = 1;
+  const int left_bdr_attr   = 3;  // x = 0.4 overlap/interface side
+  const int right_bdr_attr  = 5;  // x = 1 physical right side
+  const int top_bdr_attr    = 7;
   const pcms::LO overlap_attr = 1;
 
   mfem::Array<int> ess_bdrB(pmesh.bdr_attributes.Max());
@@ -286,18 +290,17 @@ static void app_B(MPI_Comm comm,
 
   do {
     support::PrintTempStats(pmesh, *fem.x, overlap_view, "App B:: before receive", itr);
+    support::SaveFields(outB, fem, itr);
     app->ReceivePhase([&]() { handle.Receive(); });
     support::PrintTempStats(pmesh, *fem.x, overlap_view, "App B:: after receive and before solve", itr);
 
     support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, right_bdr_attr, T_right);
 
-    support::SaveFields(outB, fem, itr);
+    support::SaveFields(outB, fem, itr+1);
 
     if (itr > 1 && flag == 0) {
       break;
     }
-
-
 
 
     auto residual = support::SolveSystem(fem, solver_type, prec_type, 1e-8, 500);
@@ -307,7 +310,7 @@ static void app_B(MPI_Comm comm,
     auto err = support::ComputeAbsoluteError(pmesh, *fem.x);
     std::printf("App B:: abs error=%e\n", err);
 
-    support::SaveFields(outB, fem, itr);
+    support::SaveFields(outB, fem, itr + 2);
 
     app->SendPhase([&]() {
       handle.Send();
@@ -493,7 +496,6 @@ void coupler(MPI_Comm comm,
     });
     counter =0;
     for (int i=0; i<c2_view.size(); i++) {
-      //printf(" Index: %d, field value %f.\n",i, c2_view[i]);
       if (c2_view(i)==0) {counter++;}
     }
 
@@ -531,6 +533,7 @@ void coupler(MPI_Comm comm,
     rms = support::ComputeRMS(c1_view,c1_pview);
     std::cout << "Itr : "<<itr<<" , coupler :: interp r2s C1 1o C2 1n C2 = " << support::ComputeRMS(c2_pview, c2_view)
               << "\n";
+
     flag = (rms > tol);
 
     app_A->SendPhase([&]() {
@@ -539,7 +542,6 @@ void coupler(MPI_Comm comm,
       gdi_A->Send(&done, "done", 1);
     });
 
-    std::printf("Itr : %d , coupler :: rms received at coupler after B->A interpolation: %f\n", itr, rms);
     done = 1;
 
     app_A->SendPhase([&]() {
@@ -557,7 +559,6 @@ void coupler(MPI_Comm comm,
 
     double errB = support::ComputeAbsoluteError(mesh_B);
     std::printf("Itr : %d , coupler :: abs error=%e\n", itr, errB);
-
 
     ++itr;
   } while (flag);
