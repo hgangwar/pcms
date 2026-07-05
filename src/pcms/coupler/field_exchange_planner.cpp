@@ -259,9 +259,6 @@ ExchangePlan GenericFieldExchangePlanner::BuildExchangePlan(
   auto out_msg = ConstructOutMessage(reverse_partition);
   plan.dest_ranks = std::move(out_msg.dest);
   plan.offsets = std::move(out_msg.offset);
-  for (int i=0; i<static_cast<LO>(plan.offsets.size()); ++i) {
-    printf("\n offsets at index: %d: %d",i, plan.offsets[i]);
-  }
   int length = 0;
   plan.permutation =
     ConstructPermutation(reverse_partition, gids.size(), &length);

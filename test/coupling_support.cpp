@@ -2,6 +2,139 @@
 
 namespace support
 {
+GaussianPulseCoefficient::GaussianPulseCoefficient(double amp,
+                                                   double x0,
+                                                   double y0,
+                                                   double sigma,
+                                                   double t_on,
+                                                   double t_off)
+  : amp_(amp),
+    x0_(x0),
+    y0_(y0),
+    sigma_(sigma),
+    t_on_(t_on),
+    t_off_(t_off)
+{
+}
+
+void GaussianPulseCoefficient::SetTime(double t)
+{
+  time_ = t;
+}
+
+bool GaussianPulseCoefficient::IsOn() const
+{
+  return time_ >= t_on_ && time_ <= t_off_;
+}
+
+double GaussianPulseCoefficient::Eval(mfem::ElementTransformation& T,
+                                      const mfem::IntegrationPoint& ip)
+{
+  if (!IsOn()) {
+    return 0.0;
+  }
+
+  mfem::Vector x;
+  T.Transform(ip, x);
+
+  const double dx = x[0] - x0_;
+  const double dy = x[1] - y0_;
+
+  return amp_ * std::exp(-(dx * dx + dy * dy) /
+                         (2.0 * sigma_ * sigma_));
+}
+
+inline void AssembleBackwardEulerHeatOperator(mfem::ParFiniteElementSpace& fes,
+                                              double kappa,
+                                              double dt,
+                                              mfem::ParBilinearForm& a)
+{
+  mfem::ConstantCoefficient one(1.0);
+  mfem::ConstantCoefficient kappa_coeff(kappa);
+  mfem::ProductCoefficient dt_kappa_coeff(dt, kappa_coeff);
+
+  a.AddDomainIntegrator(new mfem::MassIntegrator(one));
+  a.AddDomainIntegrator(new mfem::DiffusionIntegrator(dt_kappa_coeff));
+  a.Assemble();
+  a.Finalize();
+}
+
+double SolveTransientHeatBE(FEMSystem& fem,
+                                   const mfem::ParGridFunction& T_old,
+                                   mfem::Coefficient& source,
+                                   double kappa,
+                                   double dt,
+                                   const std::string& solver_type,
+                                   const std::string& prec_type,
+                                   double rel_tol,
+                                   int max_iter)
+{
+  mfem::ConstantCoefficient one(1.0);
+  mfem::ConstantCoefficient kappa_coeff(kappa);
+  mfem::ProductCoefficient dt_kappa_coeff(dt, kappa_coeff);
+
+  mfem::ParBilinearForm a(fem.fes);
+  a.AddDomainIntegrator(new mfem::MassIntegrator(one));
+  a.AddDomainIntegrator(new mfem::DiffusionIntegrator(dt_kappa_coeff));
+  a.Assemble();
+  a.Finalize();
+
+  mfem::GridFunctionCoefficient T_old_coeff(&T_old);
+  mfem::ProductCoefficient dt_source(dt, source);
+
+  mfem::ParLinearForm b(fem.fes);
+  b.AddDomainIntegrator(new mfem::DomainLFIntegrator(T_old_coeff));
+  b.AddDomainIntegrator(new mfem::DomainLFIntegrator(dt_source));
+  b.Assemble();
+
+  mfem::OperatorPtr A;
+  mfem::HypreParVector X, B;
+
+  a.FormLinearSystem(fem.ess_tdofs, *fem.x, b, A, X, B);
+
+  auto* A_hypre = A.As<mfem::HypreParMatrix>();
+  MFEM_VERIFY(A_hypre, "FormLinearSystem did not produce HypreParMatrix.");
+
+  std::unique_ptr<mfem::Solver> prec;
+
+  if (prec_type == "HypreAMG") {
+    auto amg = std::make_unique<mfem::HypreBoomerAMG>(*A_hypre);
+    amg->SetPrintLevel(0);
+    prec = std::move(amg);
+  } else if (prec_type == "Jacobi") {
+    auto sm = std::make_unique<mfem::HypreSmoother>(*A_hypre);
+    sm->SetType(mfem::HypreSmoother::Jacobi);
+    prec = std::move(sm);
+  } else {
+    MFEM_ABORT("Unknown preconditioner.");
+  }
+
+  std::unique_ptr<mfem::IterativeSolver> solver;
+  MPI_Comm comm = fem.fes->GetParMesh()->GetComm();
+
+  if (solver_type == "CG") {
+    solver = std::make_unique<mfem::CGSolver>(comm);
+  } else if (solver_type == "MINRES") {
+    solver = std::make_unique<mfem::MINRESSolver>(comm);
+  } else if (solver_type == "GMRES") {
+    solver = std::make_unique<mfem::GMRESSolver>(comm);
+  } else {
+    MFEM_ABORT("Unknown solver.");
+  }
+
+  solver->SetOperator(*A_hypre);
+  solver->SetPreconditioner(*prec);
+  solver->SetRelTol(rel_tol);
+  solver->SetAbsTol(0.0);
+  solver->SetMaxIter(max_iter);
+  solver->SetPrintLevel(0);
+
+  solver->Mult(B, X);
+
+  a.RecoverFEMSolution(X, b, *fem.x);
+
+  return solver->GetFinalNorm();
+}
 FEMSystem Init_FEMSystem(mfem::ParMesh* pmesh, int order, double kappa_val)
 {
   FEMSystem sys;

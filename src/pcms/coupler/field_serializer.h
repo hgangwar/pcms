@@ -20,15 +20,7 @@ public:
   {
     auto data = field.GetDOFHolderDataHost();
     auto owned = layout.GetOwnedHost();
-    for (int i=0; i<static_cast<LO>(owned.size()); i++) {
-      if (owned[i] ==0) {
-        printf("At index: %d, owned is not zero.\n", i);
-      }
-    }
     assert(owned.size() == permutation.size());
-    //for (int i=0; i<static_cast<LO>(permutation.size()); i++) {
-    //  printf("permutation value at index %d: %d\n", i, permutation[i]);
-    //}
     int counter= 0;
 
       for (LO i = 0; i < static_cast<LO>(data.size()); ++i) {

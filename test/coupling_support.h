@@ -38,6 +38,9 @@ struct ThermalParams
   double h_conv;              // convection coefficient
   double T_conv;              // ambient temperature for convection BC
   double T_dirichlet;         // Dirichlet boundary temperature
+  double dt = 0.005;          // app/local step size
+  double coupling_dt = 0.01;  // coupler target-time stride
+  double t_final = 1.0;
 };
 
 
@@ -151,4 +154,44 @@ double ComputeAbsoluteError(const mfem::ParMesh& pmesh,
 void PrintTempStats(const mfem::ParMesh& pmesh, const mfem::ParGridFunction& x,
   Kokkos::View<bool*, pcms::HostMemorySpace> overlap, const std::string& name, int itr);
 
+//--------------------------------------------------------------
+// Transient functions
+//--------------------------------------------------------------
+
+class GaussianPulseCoefficient : public mfem::Coefficient
+{
+public:
+  GaussianPulseCoefficient(double amp,
+                           double x0,
+                           double y0,
+                           double sigma,
+                           double t_on,
+                           double t_off);
+
+  void SetTime(double t);
+
+  bool IsOn() const;
+
+  double Eval(mfem::ElementTransformation& T,
+              const mfem::IntegrationPoint& ip) override;
+
+private:
+  double amp_;
+  double x0_;
+  double y0_;
+  double sigma_;
+  double t_on_;
+  double t_off_;
+  double time_ = 0.0;
+};
+
+double SolveTransientHeatBE(FEMSystem& fem,
+                                   const mfem::ParGridFunction& T_old,
+                                   mfem::Coefficient& source,
+                                   double kappa,
+                                   double dt,
+                                   const std::string& solver_type,
+                                   const std::string& prec_type,
+                                   double rel_tol,
+                                   int max_iter);
 } // namespace support

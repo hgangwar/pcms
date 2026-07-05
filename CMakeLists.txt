@@ -45,6 +45,7 @@ option(PCMS_ENABLE_CLIENT "enable the coupling client implementation" ON)
 option(PCMS_ENABLE_XGC "enable xgc field adapter" ON)
 option(PCMS_ENABLE_OMEGA_H "enable Omega_h field adapter" OFF)
 option(PCMS_ENABLE_MFEM "enable MFEM field adapter" OFF)
+option(PCMS_ENABLE_MFEM "enable Sundial adapter" OFF)
 option(PCMS_ENABLE_C "Enable pcms C api" ON)
 option(PCMS_ENABLE_Python "Enable pcms Python api" OFF)
 
@@ -128,6 +129,13 @@ if(PCMS_ENABLE_MFEM)
     message(FATAL_ERROR "MFEM must be built with MPI enabled.")
   endif()
 endif()
+
+if(PCMS_ENABLE_MFEM)
+  find_package(SUNDIALS REQUIRED)
+  message(STATUS "Found SUNDIALS:")
+endif()
+
+
 # adios2 adds C and Fortran depending on how it was built
 find_package(ADIOS2 CONFIG 2.10.2 REQUIRED)
 find_package(Kokkos CONFIG 4.5 REQUIRED)
