@@ -369,7 +369,7 @@ static void app_A(MPI_Comm comm,
   ess_bdrA[right_bdr_attr - 1] = 1;
 
   fem.fes->GetEssentialTrueDofs(ess_bdrA, fem.ess_tdofs);
-
+  *fem.x = 280.0;
   support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, left_bdr_attr, T_left);
   support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, right_bdr_attr, 280.0);
 
@@ -377,7 +377,7 @@ static void app_A(MPI_Comm comm,
   T_old = *fem.x;
 
   support::OutputPack outA("transient_schwarz_A", pmesh, *fem.fes);
-  outA.pvd.RegisterField("T", fem.x);
+  outA.pvd.RegisterField("T_A", fem.x);
   outA.pvd.RegisterField("T_exact", &outA.exact);
   outA.pvd.RegisterField("error", &outA.err);
 
@@ -408,7 +408,7 @@ static void app_A(MPI_Comm comm,
   const double t_final = params.t_final;
 
   support::GaussianPulseCoefficient source(
-    10000.0, 0.5, 0.5, 0.08, 0.20, 0.50);
+    5000.0, 0.5, 0.5, 0.08, 0.20, 0.50);
 
   double time = 0.0;
   int time_step = 0;
@@ -461,7 +461,7 @@ static void app_A(MPI_Comm comm,
       support::PrintTempStats(pmesh, *fem.x, overlap_view,
                               "App A:: after transient solve", schwarz_iter);
 
-      support::SaveFields(outA, fem, time_step * 1000 + schwarz_iter);
+
 
       app->SendPhase([&]() {
         handle.Send();
@@ -505,7 +505,7 @@ static void app_A(MPI_Comm comm,
     T_old = *fem.x;
     time = target_time;
     ++time_step;
-
+    support::SaveFields(outA, fem, time_step);
     std::printf("App A:: accepted time step %d at time %f\n", time_step, time);
   }
 }
@@ -535,7 +535,7 @@ static void app_B(MPI_Comm comm,
   ess_bdrB[right_bdr_attr - 1] = 1;
 
   fem.fes->GetEssentialTrueDofs(ess_bdrB, fem.ess_tdofs);
-
+  *fem.x = 280.0;
   support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, left_bdr_attr, 280.0);
   support::ApplyBoundaryConstantByAttr(pmesh, *fem.x, right_bdr_attr, T_right);
 
@@ -543,7 +543,7 @@ static void app_B(MPI_Comm comm,
   T_old = *fem.x;
 
   support::OutputPack outB("transient_schwarz_B", pmesh, *fem.fes);
-  outB.pvd.RegisterField("T", fem.x);
+  outB.pvd.RegisterField("T_B", fem.x);
   outB.pvd.RegisterField("T_exact", &outB.exact);
   outB.pvd.RegisterField("error", &outB.err);
 
@@ -574,7 +574,7 @@ static void app_B(MPI_Comm comm,
   const double t_final = params.t_final;
 
   support::GaussianPulseCoefficient source(
-    10000.0, 0.5, 0.5, 0.08, 0.20, 0.50);
+    5000.0, 0.5, 0.5, 0.08, 0.20, 0.50);
 
   double time = 0.0;
   int time_step = 0;
@@ -634,7 +634,7 @@ static void app_B(MPI_Comm comm,
       support::PrintTempStats(pmesh, *fem.x, overlap_view,
                               "App B:: after transient solve", schwarz_iter);
 
-      support::SaveFields(outB, fem, time_step * 1000 + schwarz_iter);
+
 
       app->SendPhase([&]() {
         handle.Send();
@@ -676,7 +676,7 @@ static void app_B(MPI_Comm comm,
     T_old = *fem.x;
     time = target_time;
     ++time_step;
-
+    support::SaveFields(outB, fem, time_step);
     std::printf("App B:: accepted time step %d at time %f\n", time_step, time);
   }
 }
@@ -758,7 +758,7 @@ void coupler(MPI_Comm comm,
   auto time_gdi_A = app_A->Add_GDI<dtype>("time_comm", comm);
   auto time_gdi_B = app_B->Add_GDI<dtype>("time_comm", comm);
 
-  const double tol = 5e-3; // relative Schwarz tolerance
+  const double tol = 1e-3;
   const int max_schwarz_iters = 20;
 
   SUNContext sunctx = nullptr;
@@ -793,7 +793,7 @@ void coupler(MPI_Comm comm,
   stepper_content->tstop = params.t_final;
   stepper_content->tol = tol;
   stepper_content->rel_norm_floor = 100.0;
-  stepper_content->omega = 0.5;
+  stepper_content->omega = 1;
   stepper_content->nverts = nverts;
   stepper_content->max_schwarz_iters = max_schwarz_iters;
 
