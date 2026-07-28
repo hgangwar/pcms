@@ -86,7 +86,7 @@ public:
       "copy_spline_values_device",
       Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {ny, nx}),
       KOKKOS_LAMBDA(const LO iy, const LO ix) {
-        spline_values(ix * ny + iy) = dof_data[iy * nx + ix];
+        spline_values(ix * ny + iy) = dof_data(iy * nx + ix, 0);
       });
 
     if (hint_.num_out_of_bounds_ == static_cast<size_t>(num_points) &&
@@ -171,7 +171,7 @@ public:
 
 private:
   std::shared_ptr<const UniformGridFieldLayout<2>> layout_;
-  const UniformGrid<2>& grid_;
+  UniformGrid<2> grid_;
   UniformGridFieldLocalizationHint<2> hint_;
   Real fill_value_;
   Kokkos::View<Real*, DeviceMemorySpace> x_coords_;
@@ -223,7 +223,7 @@ public:
         "single-component fields");
     }
 
-    auto coordinates = coords.GetCoordinates();
+    auto coordinates = coords.GetValues();
     LO num_points = static_cast<LO>(coordinates.extent(0));
 
     Kokkos::View<Real**, DeviceMemorySpace> coordinates_d("coordinates_d",
@@ -287,7 +287,7 @@ public:
 
 private:
   std::shared_ptr<const UniformGridFieldLayout<2>> layout_;
-  const UniformGrid<2>& grid_;
+  UniformGrid<2> grid_;
 };
 
 } // namespace pcms

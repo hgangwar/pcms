@@ -415,6 +415,7 @@ if(Catch2_FOUND)
       test_field_evaluation.cpp
       test_field_interpolation.cpp
       test_field_copy.cpp
+      test_field_exchange_planner.cpp
       test_point_search.cpp
       test_mls_basis.cpp
       test_rbf_interp.cpp
@@ -433,11 +434,14 @@ if(Catch2_FOUND)
   endif()
   if(PCMS_ENABLE_MESHFIELDS)
     list(APPEND PCMS_UNIT_TEST_SOURCES
-      test_load_vector.cpp)
+      test_omega_h_form_integrator_utils.cpp)
   endif()
 
   if(PCMS_ENABLE_PETSC AND PCMS_ENABLE_MESHFIELDS)
     list(APPEND PCMS_UNIT_TEST_SOURCES
+      test_omega_h_intersection_rhs_integrator.cpp
+      test_omega_h_mass_integrator.cpp
+      test_omega_h_mc_rhs_integrator.cpp
       test_mesh_intersection_field_transfer.cpp)
   endif()
   

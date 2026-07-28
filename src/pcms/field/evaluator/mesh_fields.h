@@ -42,6 +42,8 @@ public:
                        hint_.coordinates_.extent(0) + hint_.num_missing_);
     PCMS_ALWAYS_ASSERT(values.extent(1) ==
                        static_cast<size_t>(layout_->GetNumComponents()));
+    // ensure that only scalar fields are supported
+    PCMS_ALWAYS_ASSERT(layout_->GetNumComponents() == 1);
     auto const* mesh_field_data =
       dynamic_cast<const MeshFieldsFieldData<T>*>(&field.GetData());
     if (!mesh_field_data) {
@@ -128,7 +130,7 @@ public:
         "MeshFieldsEvaluatorFactory: NearestBoundary is not supported");
     }
 
-    auto coordinates = coords.GetCoordinates();
+    auto coordinates = coords.GetValues();
     Kokkos::View<Real* [2], DeviceMemorySpace> coords_search(
       "coords_search", coordinates.extent(0));
     Kokkos::parallel_for(
@@ -140,8 +142,10 @@ public:
         coords_search(i, 1) = coordinates(i, 1);
       });
     auto results = search_(coords_search);
+    auto owning_ids = search_.GetOwningElementIds(results);
 
-    MeshFieldsAdapter2LocalizationHint hint(mesh_, results, policy.mode);
+    MeshFieldsAdapter2LocalizationHint hint(mesh_, results, coords_search,
+                                            owning_ids, policy.mode);
 
     return std::make_unique<MeshFieldsPointEvaluator<T>>(
       layout_, std::move(hint), policy.fill_value);

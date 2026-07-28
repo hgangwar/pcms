@@ -29,48 +29,6 @@ struct memory_space_accessor : public Kokkos::default_accessor<ElementType>
   {
   }
 };
-
-} // namespace detail
-
-template <typename ContainerType, typename ElementType, typename Extents,
-          typename LayoutPolicy, typename AccessorPolicy>
-auto make_mdspan(const ContainerType& /* unused */)
-  -> Kokkos::mdspan<ElementType, Extents, LayoutPolicy, AccessorPolicy>
-{
-  static_assert(detail::dependent_always_false<ContainerType>::type,
-                "creating mdspan is not implemented for type");
-}
-
-// TODO make_mdspan
-
-template <int Rank, typename ElementType, typename MemorySpace,
-          typename LayoutPolicy = Kokkos::layout_right, typename IndexType = LO>
-using View =
-  Kokkos::mdspan<ElementType, Kokkos::dextents<IndexType, Rank>, LayoutPolicy,
-                 detail::memory_space_accessor<
-                   std::remove_reference_t<ElementType>, MemorySpace>>;
-
-template <typename ElementType, typename MemorySpace,
-          typename LayoutPolicy = Kokkos::layout_right>
-using Rank1View = View<1, ElementType, MemorySpace, LayoutPolicy>;
-
-template <typename ElementType, typename MemorySpace,
-          typename LayoutPolicy = Kokkos::layout_right>
-using Rank2View = View<2, ElementType, MemorySpace, LayoutPolicy>;
-
-template <typename ElementType, typename MemorySpace,
-          typename LayoutPolicy = Kokkos::layout_right>
-using Rank3View = View<3, ElementType, MemorySpace, LayoutPolicy>;
-
-template <typename ElementType, typename MemorySpace,
-          typename LayoutPolicy = Kokkos::layout_right>
-using Rank4View = View<4, ElementType, MemorySpace, LayoutPolicy>;
-
-template <typename MemorySpace>
-using GlobalIDView = View<1, const GO, MemorySpace, Kokkos::layout_right, GO>;
-
-namespace detail
-{
 template <typename T, typename = std::void_t<>>
 struct HasValueType : std::false_type
 {};
@@ -156,7 +114,51 @@ using default_layout_for_memory_space_t =
   typename default_layout_for_memory_space<MemorySpace>::type;
 
 } // namespace detail
-  // default implementation of make_array_view
+
+template <typename ContainerType, typename ElementType, typename Extents,
+          typename LayoutPolicy, typename AccessorPolicy>
+auto make_mdspan(const ContainerType& /* unused */)
+  -> Kokkos::mdspan<ElementType, Extents, LayoutPolicy, AccessorPolicy>
+{
+  static_assert(detail::dependent_always_false<ContainerType>::type,
+                "creating mdspan is not implemented for type");
+}
+
+// TODO make_mdspan
+
+template <int Rank, typename ElementType, typename MemorySpace,
+          typename LayoutPolicy =
+            detail::default_layout_for_memory_space_t<MemorySpace>,
+          typename IndexType = LO>
+using View =
+  Kokkos::mdspan<ElementType, Kokkos::dextents<IndexType, Rank>, LayoutPolicy,
+                 detail::memory_space_accessor<
+                   std::remove_reference_t<ElementType>, MemorySpace>>;
+
+template <typename ElementType, typename MemorySpace,
+          typename LayoutPolicy =
+            detail::default_layout_for_memory_space_t<MemorySpace>>
+using Rank1View = View<1, ElementType, MemorySpace, LayoutPolicy>;
+
+template <typename ElementType, typename MemorySpace,
+          typename LayoutPolicy =
+            detail::default_layout_for_memory_space_t<MemorySpace>>
+using Rank2View = View<2, ElementType, MemorySpace, LayoutPolicy>;
+
+template <typename ElementType, typename MemorySpace,
+          typename LayoutPolicy =
+            detail::default_layout_for_memory_space_t<MemorySpace>>
+using Rank3View = View<3, ElementType, MemorySpace, LayoutPolicy>;
+
+template <typename ElementType, typename MemorySpace,
+          typename LayoutPolicy =
+            detail::default_layout_for_memory_space_t<MemorySpace>>
+using Rank4View = View<4, ElementType, MemorySpace, LayoutPolicy>;
+
+template <typename MemorySpace>
+using GlobalIDView = View<1, const GO, MemorySpace, Kokkos::layout_right, GO>;
+
+// default implementation of make_array_view
 template <typename T, typename MemorySpace = detail::memory_space_selector_t<T>,
           typename ElementType = detail::element_type_t<T>>
 auto make_array_view(const T& array)
@@ -239,8 +241,21 @@ auto MakeConstRank2View(const Kokkos::View<T**, Properties...>& view)
 template <typename T>
 auto MakeConstRank2View(Omega_h::Read<T> array, int dim)
 {
+  // Cannonical usage of Omega_h arrays is a layout_right 1D array
   return Rank2View<const T, DeviceMemorySpace, Kokkos::layout_right>(
     array.data(), array.size() / dim, dim);
+}
+
+// Flatten a contiguous (exhaustive) 2D [dof][comp] view into a 1D view over the
+// same storage. Intended for boundary code (serialization, element-wise
+// comparison) that wants a flat [num_dof_holder * num_components] view rather
+// than indexing pointers directly.
+template <typename ElementType, typename MemorySpace, typename LayoutPolicy>
+Rank1View<ElementType, MemorySpace> FlattenToRank1View(
+  Rank2View<ElementType, MemorySpace, LayoutPolicy> view)
+{
+  return Rank1View<ElementType, MemorySpace>(view.data_handle(),
+                                             static_cast<LO>(view.size()));
 }
 
 // utility function to deep copy between layout incompatible views
@@ -336,6 +351,85 @@ void CopyHostRank1ViewToDeviceView(Kokkos::View<T*, DeviceMemorySpace> dest,
     src_tmp(i) = src(i);
   }
   Kokkos::deep_copy(dest, src_tmp);
+}
+
+// Copy a [dof][comp] device Rank2View into a flat node-major device View.
+// Uses the 2D indexing src(i, c) so the result is correct regardless of the
+// source view's layout (unlike flattening through data_handle(), which assumes
+// node-major storage and silently reorders wide/multi-component data on GPU).
+template <typename T>
+void CopyDeviceRank2ViewToDeviceView(Kokkos::View<T*, DeviceMemorySpace> dest,
+                                     Rank2View<const T, DeviceMemorySpace> src)
+{
+  const size_t num_dof = src.extent(0);
+  const size_t num_comp = src.extent(1);
+  if (dest.extent(0) != num_dof * num_comp) {
+    throw pcms_error("CopyDeviceRank2ViewToDeviceView: size mismatch");
+  }
+  Kokkos::parallel_for(
+    "CopyDeviceRank2ViewToDeviceView", num_dof, KOKKOS_LAMBDA(LO i) {
+      for (size_t c = 0; c < num_comp; ++c) {
+        dest(i * num_comp + c) = src(i, c);
+      }
+    });
+}
+
+// Rank-2 destination overload, so callers can migrate their internal storage
+// from a flat View<T*> to a View<T**> without changing the call site.
+template <typename T>
+void CopyDeviceRank2ViewToDeviceView(Kokkos::View<T**, DeviceMemorySpace> dest,
+                                     Rank2View<const T, DeviceMemorySpace> src)
+{
+  const size_t num_dof = src.extent(0);
+  const size_t num_comp = src.extent(1);
+  if (dest.extent(0) != num_dof || dest.extent(1) != num_comp) {
+    throw pcms_error("CopyDeviceRank2ViewToDeviceView: size mismatch");
+  }
+  Kokkos::parallel_for(
+    "CopyDeviceRank2ViewToDeviceView", num_dof, KOKKOS_LAMBDA(LO i) {
+      for (size_t c = 0; c < num_comp; ++c) {
+        dest(i, c) = src(i, c);
+      }
+    });
+}
+
+// Host analogue: copy a [dof][comp] host Rank2View into a flat node-major
+// device View. The host Rank2View is layout_right (contiguous node-major), so
+// we alias its storage with an unmanaged view and deep_copy straight to device.
+template <typename T>
+void CopyHostRank2ViewToDeviceView(Kokkos::View<T*, DeviceMemorySpace> dest,
+                                   Rank2View<const T, HostMemorySpace> src)
+{
+  const size_t num_dof = src.extent(0);
+  const size_t num_comp = src.extent(1);
+  if (dest.extent(0) != num_dof * num_comp) {
+    throw pcms_error("CopyHostRank2ViewToDeviceView: size mismatch");
+  }
+  Kokkos::View<const T*, HostMemorySpace,
+               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+    src_view(src.data_handle(), num_dof * num_comp);
+  Kokkos::deep_copy(dest, src_view);
+}
+
+// Rank-2 destination overload for host-to-device copies. The device View<T**>
+// may use a different layout than the host source, so stage through a mirror
+// that matches the destination layout.
+template <typename T>
+void CopyHostRank2ViewToDeviceView(Kokkos::View<T**, DeviceMemorySpace> dest,
+                                   Rank2View<const T, HostMemorySpace> src)
+{
+  const size_t num_dof = src.extent(0);
+  const size_t num_comp = src.extent(1);
+  if (dest.extent(0) != num_dof || dest.extent(1) != num_comp) {
+    throw pcms_error("CopyHostRank2ViewToDeviceView: size mismatch");
+  }
+  auto src_mirror = Kokkos::create_mirror_view(dest);
+  for (size_t i = 0; i < num_dof; ++i) {
+    for (size_t c = 0; c < num_comp; ++c) {
+      src_mirror(i, c) = src(i, c);
+    }
+  }
+  Kokkos::deep_copy(dest, src_mirror);
 }
 
 // utility function to copy from Rank1View to Rank1View

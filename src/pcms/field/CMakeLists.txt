@@ -3,7 +3,9 @@ find_package(KokkosKernels REQUIRED)
 set(PCMS_FIELD_HEADERS
         field.h
         coordinate_system.h
+        element_dispatch.h
         evaluation_request.h
+        gid_permutation.hpp
         field_layout.h
         field_metadata.h
         layout/empty.h
@@ -17,6 +19,8 @@ set(PCMS_FIELD_HEADERS
         data/point_cloud.h
 )
 set(PCMS_FIELD_SOURCES
+        field_layout.cpp
+        gid_permutation.cpp
         function_space/polynomial_reconstruction.cpp
         layout/empty.cpp
         layout/point_cloud.cpp

@@ -182,7 +182,11 @@ jobs:
         if [ "${{ matrix.meshfields }}" = "ON" ]; then
           meshfields_lib="${{ runner.temp }}/build-meshFields/install/lib:"
         fi
-        echo "LD_LIBRARY_PATH=${{ runner.temp }}/build-kokkos/install/lib:${{ runner.temp }}/build-omega_h/install/lib:${meshfields_lib}${{ runner.temp }}/build-redev/install/lib:${{ runner.temp }}/build-ADIOS2/install/lib:${{ runner.temp }}/build-perfstubs/install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        petsc_lib=""
+        if [ "${{ matrix.petsc }}" = "ON" ]; then
+          petsc_lib="${{ runner.temp }}/petsc/ubuntu-kokkos/lib:"
+        fi
+        echo "LD_LIBRARY_PATH=${{ runner.temp }}/build-kokkos/install/lib:${{ runner.temp }}/build-omega_h/install/lib:${meshfields_lib}${petsc_lib}${{ runner.temp }}/build-redev/install/lib:${{ runner.temp }}/build-ADIOS2/install/lib:${{ runner.temp }}/build-perfstubs/install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
     - name: clone petsc
       if: matrix.petsc == 'ON'
