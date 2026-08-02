@@ -18,10 +18,11 @@ Initialize the Omega_h library which manages parallel communication.
 
 ```python
 import pcms
+import PyOmega_h as omega_h
 import numpy as np
 
 # Create library and world communicator
-lib = pcms.OmegaHLibrary()
+lib = omega_h.OmegaHLibrary()
 world = lib.world()
 ```
 
@@ -36,9 +37,9 @@ You can either create a mesh or read an existing mesh from a file.
 
 ```python
 # Create a 2D box mesh: 1.0 x 1.0 domain with 4x4 elements
-mesh = pcms.build_box(
+mesh = omega_h.build_box(
     world,                          # Communicator
-    pcms.Family.SIMPLEX,        # Element type
+    omega_h.Family.SIMPLEX,        # Element type
     1.0, 1.0, 0.0,                 # Domain size: x, y, z
     4, 4, 0,                       # Number of elements: nx, ny, nz
     False                          # Symmetric flag
@@ -49,37 +50,37 @@ mesh = pcms.build_box(
 
 ```python
 # Auto-detect file format and read
-mesh = pcms.read_mesh_file("my_mesh.osh", world)
+mesh = omega_h.read_mesh_file("my_mesh.osh", world)
 
 # Or use format-specific readers for explicit control:
 
 # Binary format (.osh)
-mesh = pcms.read_mesh_binary("mesh.osh", lib)
+mesh = omega_h.read_mesh_binary("mesh.osh", lib)
 
 # Gmsh format (.msh)
-mesh = pcms.read_mesh_gmsh("mesh.msh", world)
+mesh = omega_h.read_mesh_gmsh("mesh.msh", world)
 
 # VTK format (.pvtu for parallel files)
-mesh = pcms.read_mesh_parallel_vtk("mesh.pvtu", world)
+mesh = omega_h.read_mesh_parallel_vtk("mesh.pvtu", world)
 
 # Exodus format (.exo) - if SEACAS support is enabled
 # Using file handle API
-exo_handle = pcms.exodus_open("mesh.exo", verbose=False)
-num_steps = pcms.exodus_get_num_time_steps(exo_handle)
-mesh = pcms.OmegaHMesh(lib)
+exo_handle = omega_h.exodus_open("mesh.exo", verbose=False)
+num_steps = omega_h.exodus_get_num_time_steps(exo_handle)
+mesh = omega_h.Mesh(lib)
 mesh.set_comm(world)
-pcms.read_mesh_exodus(exo_handle, mesh, verbose=False)
-pcms.exodus_close(exo_handle)
+omega_h.read_mesh_exodus(exo_handle, mesh, verbose=False)
+omega_h.exodus_close(exo_handle)
 
 # ADIOS2 format (.bp) - if ADIOS2 support is enabled
-mesh = pcms.read_mesh_adios2("mesh.bp", lib, prefix="")
+mesh = omega_h.read_mesh_adios2("mesh.bp", lib, prefix="")
 
 # MESHB format (.mesh) - if LIBMESHB support is enabled
-mesh = pcms.OmegaHMesh(lib)
+mesh = omega_h.OmegaHMesh(lib)
 mesh.set_comm(world)
-pcms.read_mesh_meshb(mesh, "mesh.mesh")
+omega_h.read_mesh_meshb(mesh, "mesh.mesh")
 # Read solution/resolution data if available
-pcms.read_meshb_sol(mesh, "mesh.sol", sol_name="resolution")
+omega_h.read_meshb_sol(mesh, "mesh.sol", sol_name="resolution")
 ```
 
 **PS**: File formats such as Exodus or libMeshB require that PCMS be built with the respective libraries enabled.
@@ -278,23 +279,32 @@ np.save('field_data.npy', grid_values)
 - `tag.name()` - Tag name
 - `tag.ncomps()` - Number of components in tag
 
+### Omega_h I/O (available via `omega_h.*` from `import PyOmega_h as omega_h`)
+- `omega_h.read_mesh_file(filepath, comm)` - Auto-detect format and read mesh
+- `omega_h.read_mesh_binary(filepath, lib)` - Read binary .osh mesh
+- `omega_h.write_mesh_binary(filepath, mesh)` - Write binary .osh mesh
+- `omega_h.read_mesh_gmsh(filepath, comm)` - Read Gmsh .msh mesh
+- `omega_h.write_mesh_gmsh(filepath, mesh)` - Write Gmsh .msh mesh
+- `omega_h.read_mesh_parallel_vtk(pvtupath, comm)` - Read parallel VTK .pvtu mesh
+- `omega_h.write_mesh_vtu(filepath, mesh, compress=...)` - Write VTK .vtu mesh
+
 ### Exodus I/O (if OMEGA_H_USE_SEACASEXODUS enabled)
-- `exodus_open(filepath, verbose=False)` - Open Exodus file, returns file handle
-- `exodus_close(exodus_file)` - Close Exodus file handle
-- `exodus_get_num_time_steps(exodus_file)` - Get number of time steps in file
-- `read_mesh_exodus(exodus_file, mesh, verbose=False, classify_with=...)` - Read mesh from file handle
-- `read_exodus_nodal_fields(exodus_file, mesh, time_step, prefix="", postfix="", verbose=False)` - Read nodal fields
-- `read_exodus_element_fields(exodus_file, mesh, time_step, prefix="", postfix="", verbose=False)` - Read element fields
-- `read_mesh_exodus_sliced(filepath, comm, verbose=False, classify_with=..., time_step=-1)` - Read mesh in parallel
-- `write_mesh_exodus(filepath, mesh, verbose=False, classify_with=...)` - Write mesh to Exodus file
-- `ExodusClassifyWith.NODE_SETS` - Classify using node sets
-- `ExodusClassifyWith.SIDE_SETS` - Classify using side sets
+- `omega_h.exodus_open(filepath, verbose=False)` - Open Exodus file, returns file handle
+- `omega_h.exodus_close(exodus_file)` - Close Exodus file handle
+- `omega_h.exodus_get_num_time_steps(exodus_file)` - Get number of time steps in file
+- `omega_h.read_mesh_exodus(exodus_file, mesh, verbose=False, classify_with=...)` - Read mesh from file handle
+- `omega_h.read_exodus_nodal_fields(exodus_file, mesh, time_step, prefix="", postfix="", verbose=False)` - Read nodal fields
+- `omega_h.read_exodus_element_fields(exodus_file, mesh, time_step, prefix="", postfix="", verbose=False)` - Read element fields
+- `omega_h.read_mesh_exodus_sliced(filepath, comm, verbose=False, classify_with=..., time_step=-1)` - Read mesh in parallel
+- `omega_h.write_mesh_exodus(filepath, mesh, verbose=False, classify_with=...)` - Write mesh to Exodus file
+- `omega_h.ExodusClassifyWith.NODE_SETS` - Classify using node sets
+- `omega_h.ExodusClassifyWith.SIDE_SETS` - Classify using side sets
 
 ### MESHB I/O (if OMEGA_H_USE_LIBMESHB enabled)
-- `read_mesh_meshb(mesh, filepath)` - Read mesh from MESHB file
-- `write_mesh_meshb(mesh, filepath, version)` - Write mesh to MESHB file
-- `read_meshb_sol(mesh, filepath, sol_name)` - Read solution/resolution from .sol file
-- `write_meshb_sol(mesh, filepath, sol_name, version)` - Write solution/resolution to .sol file
+- `omega_h.read_mesh_meshb(mesh, filepath)` - Read mesh from MESHB file
+- `omega_h.write_mesh_meshb(mesh, filepath, version)` - Write mesh to MESHB file
+- `omega_h.read_meshb_sol(mesh, filepath, sol_name)` - Read solution/resolution from .sol file
+- `omega_h.write_meshb_sol(mesh, filepath, sol_name, version)` - Write solution/resolution to .sol file
 
 ### Grid Properties
 - `grid.get_num_cells()` - Total number of cells

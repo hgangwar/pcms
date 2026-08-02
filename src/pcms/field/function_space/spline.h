@@ -10,6 +10,7 @@
 #include "pcms/field/out_of_bounds_policy.h"
 #include "pcms/field/point_evaluator.h"
 #include "pcms/utility/arrays.h"
+#include "pcms/utility/eqdsk.h"
 #include "pcms/utility/memory_spaces.h"
 #include "pcms/utility/uniform_grid.h"
 

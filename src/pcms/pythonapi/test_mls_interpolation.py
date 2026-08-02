@@ -6,6 +6,7 @@ Field<T>-based API.
 
 import numpy as np
 import pcms
+import PyOmega_h as omega_h
 
 
 def poly_value(x, y, degree):
@@ -91,7 +92,7 @@ def test_mls_interpolation_polynomial_reproduction():
 
 
 if __name__ == "__main__":
-    lib = pcms.OmegaHLibrary()
+    lib = omega_h.OmegaHLibrary()
     world = lib.world()
 
     try:

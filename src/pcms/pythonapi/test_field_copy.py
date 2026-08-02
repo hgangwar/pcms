@@ -1,4 +1,5 @@
 import pcms
+import PyOmega_h as omega_h
 import numpy as np
 
 def test_copy(world, dim, order, num_components):
@@ -9,9 +10,9 @@ def test_copy(world, dim, order, num_components):
     print(f"\nStarting test: dim={dim}, order={order}, num_components={num_components}")
 
     # Build mesh
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world, 
-        pcms.Family.SIMPLEX, 
+        omega_h.Family.SIMPLEX, 
         1.0, 1.0, 1.0, 
         nx, ny, nz, 
         False
@@ -64,7 +65,7 @@ def main():
     print("Testing copy omega_h field data...")
 
     # Initialize Omega_h library
-    lib = pcms.OmegaHLibrary()
+    lib = omega_h.OmegaHLibrary()
     world = lib.world()
     print("Initialized Omega_h library and world")
 

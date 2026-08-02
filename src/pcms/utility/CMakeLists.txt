@@ -5,6 +5,7 @@ set(
         bounding_box.h
         common.h
         entity_types.h
+        eqdsk.h
         mesh_geometry.h
         memory_spaces.h
         mpi_type.h
@@ -20,6 +21,7 @@ set(
 set(
         PCMS_UTILITY_SOURCES
         assert.cpp
+        eqdsk.cpp
         print.cpp
 )
 add_library(pcms_utility ${PCMS_UTILITY_SOURCES})
@@ -33,6 +35,9 @@ target_include_directories(
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 target_link_libraries(pcms_utility PUBLIC Kokkos::kokkos perfstubs)
+if(PCMS_ENABLE_OMEGA_H)
+    target_link_libraries(pcms_utility PUBLIC Omega_h::omega_h)
+endif()
 target_compile_features(pcms_utility PUBLIC cxx_std_20)
 
 set_target_properties(

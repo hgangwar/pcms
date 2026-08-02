@@ -16,6 +16,23 @@
 namespace pcms
 {
 
+namespace detail
+{
+
+struct InitCoordsFunctor
+{
+  Kokkos::View<Real*, DeviceMemorySpace> coords;
+  Real bot_left;
+  Real delta;
+
+  KOKKOS_FUNCTION void operator()(LO i) const
+  {
+    coords(i) = bot_left + delta * i;
+  }
+};
+
+} // namespace detail
+
 template <typename LayoutPolicy =
             detail::default_layout_for_memory_space_t<DeviceMemorySpace>>
 class UniformGridSplinePointEvaluator2D
@@ -34,12 +51,20 @@ public:
   {
     Real dx = grid_.edge_length[0] / grid_.divisions[0];
     Real dy = grid_.edge_length[1] / grid_.divisions[1];
-    for (LO ix = 0; ix <= grid_.divisions[0]; ++ix) {
-      x_coords_(ix) = grid_.bot_left[0] + dx * ix;
-    }
-    for (LO iy = 0; iy <= grid_.divisions[1]; ++iy) {
-      y_coords_(iy) = grid_.bot_left[1] + dy * iy;
-    }
+    Real bot_left_x = grid_.bot_left[0];
+    Real bot_left_y = grid_.bot_left[1];
+    LO nx = grid_.divisions[0];
+    LO ny = grid_.divisions[1];
+
+    Kokkos::parallel_for(
+      "init_x_coords",
+      Kokkos::RangePolicy<DeviceMemorySpace::execution_space>(0, nx + 1),
+      detail::InitCoordsFunctor{x_coords_, bot_left_x, dx});
+
+    Kokkos::parallel_for(
+      "init_y_coords",
+      Kokkos::RangePolicy<DeviceMemorySpace::execution_space>(0, ny + 1),
+      detail::InitCoordsFunctor{y_coords_, bot_left_y, dy});
   }
 
   void Evaluate(
@@ -149,8 +174,8 @@ private:
   const UniformGrid<2>& grid_;
   UniformGridFieldLocalizationHint<2> hint_;
   Real fill_value_;
-  Kokkos::View<Real*, HostMemorySpace> x_coords_;
-  Kokkos::View<Real*, HostMemorySpace> y_coords_;
+  Kokkos::View<Real*, DeviceMemorySpace> x_coords_;
+  Kokkos::View<Real*, DeviceMemorySpace> y_coords_;
 };
 
 class UniformGridSplineEvaluatorFactory2D : public FieldEvaluatorFactory<Real>
@@ -219,6 +244,8 @@ public:
 
     // Parallel reduction to compute cell indices and count out-of-bounds points
     size_t num_out_of_bounds = 0;
+    auto grid_copy =
+      grid_; // Create local copy to avoid capturing reference in some compilers
     Kokkos::parallel_reduce(
       "localize_points_on_device_spline",
       Kokkos::RangePolicy<DeviceMemorySpace::execution_space>(0, num_points),
@@ -228,13 +255,13 @@ public:
           point[d] = coordinates_d(i, d);
         }
 
-        bool out_of_bounds = !grid_.IsPointInBounds(point);
+        bool out_of_bounds = !grid_copy.IsPointInBounds(point);
         is_out_of_bounds_device(i) = out_of_bounds;
         if (out_of_bounds) {
           local_count += 1;
         }
 
-        cell_indices_device(i) = grid_.ClosestCellID(point);
+        cell_indices_device(i) = grid_copy.ClosestCellID(point);
       },
       num_out_of_bounds);
 

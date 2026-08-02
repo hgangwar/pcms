@@ -10,8 +10,6 @@ void bind_omega_h_field(py::module& m);
 
 void bind_transfer_field_module(py::module& m);
 
-void bind_omega_h_mesh_module(py::module& m);
-
 void bind_coordinate_system_module(py::module& m);
 
 void bind_coordinate_module(py::module& m);
@@ -39,8 +37,6 @@ PYBIND11_MODULE(pcms, m)
   pcms::bind_coordinate_system_module(m);
   pcms::bind_coordinate_module(m);
 
-  // Bind mesh and field infrastructure
-  pcms::bind_omega_h_mesh_module(m);
   // bind_field_module is a no-op stub —
   // FieldT<T>/LocalizationHint/FieldDataView have been removed from the C++
   // API.

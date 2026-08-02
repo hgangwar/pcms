@@ -3,6 +3,7 @@ Field-centric Python examples for uniform-grid-backed function spaces.
 """
 import numpy as np
 import pcms
+import PyOmega_h as omega_h
 
 
 def test_uniform_grid_field_creation():
@@ -168,9 +169,9 @@ def test_uniform_grid_workflow(world):
     6. Verifies the transferred values
     """
     # Create a simple 2D box mesh: 1.0 x 1.0 domain with 4x4 elements
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 0.0,
         4, 4, 0,
         False
@@ -239,18 +240,18 @@ def test_omega_h_to_omega_h_transfer_workflow(world):
     mesh-backed function spaces rather than a uniform grid target.
     """
     # Source mesh (coarser).
-    src_mesh = pcms.build_box(
+    src_mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 0.0,
         4, 4, 0,
         False
     )
 
     # Target mesh (finer).
-    tgt_mesh = pcms.build_box(
+    tgt_mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 0.0,
         8, 8, 0,
         False
@@ -289,7 +290,7 @@ def test_omega_h_to_omega_h_transfer_workflow(world):
 
 
 def main():
-    lib = pcms.OmegaHLibrary()
+    lib = omega_h.OmegaHLibrary()
     world = lib.world()
 
     print("=" * 60)

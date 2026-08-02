@@ -10,7 +10,6 @@ pybind11_add_module(pcms
   bind_omega_h_field_layout.cpp
   bind_uniform_grid_field.cpp
   bind_uniform_grid_field_layout.cpp
-  bind_omega_h.cpp
         bind_transfer_field.cpp
         bind_mls_interpolation.cpp
         bind_mesh_utilities.cpp

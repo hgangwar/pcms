@@ -106,13 +106,16 @@ public:
     }
 
     // Order-1: multilinear interpolation
+    // Create local copy to avoid capturing reference in device lambdas in some
+    // compilers
+    auto grid_copy = grid_;
     Kokkos::View<LO**, DeviceMemorySpace> cell_dim_indices("cell_dim_indices",
                                                            num_points, Dim);
     Kokkos::parallel_for(
       "compute_cell_dim_indices",
       Kokkos::RangePolicy<DeviceMemorySpace::execution_space>(0, num_points),
       KOKKOS_CLASS_LAMBDA(const LO i) {
-        auto dim_idx = grid_.GetDimensionedIndex(cell_indices(i));
+        auto dim_idx = grid_copy.GetDimensionedIndex(cell_indices(i));
         for (unsigned d = 0; d < Dim; ++d) {
           cell_dim_indices(i, d) = dim_idx[d];
         }
@@ -132,7 +135,7 @@ public:
       "compute_parametric_coords",
       Kokkos::RangePolicy<DeviceMemorySpace::execution_space>(0, num_points),
       KOKKOS_CLASS_LAMBDA(const LO i) {
-        auto cell_bbox = grid_.GetCellBBOX(cell_indices(i));
+        auto cell_bbox = grid_copy.GetCellBBOX(cell_indices(i));
         for (unsigned d = 0; d < Dim; ++d) {
           Real coord = coordinates(i, d);
           Real cell_min = cell_bbox.center[d] - cell_bbox.half_width[d];
@@ -256,6 +259,9 @@ public:
       "is_out_of_bounds", num_points);
 
     // Parallel reduction to compute cell indices and count out-of-bounds points
+    // Create local copy to avoid capturing reference in device lambdas in some
+    // compilers
+    auto grid_copy = grid_;
     size_t num_out_of_bounds = 0;
     Kokkos::parallel_reduce(
       "localize_points_on_device",
@@ -266,13 +272,13 @@ public:
           point[d] = coordinates_device(i, d);
         }
 
-        bool out_of_bounds = !grid_.IsPointInBounds(point);
+        bool out_of_bounds = !grid_copy.IsPointInBounds(point);
         is_out_of_bounds_device(i) = out_of_bounds;
         if (out_of_bounds) {
           local_count += 1;
         }
 
-        cell_indices_device(i) = grid_.ClosestCellID(point);
+        cell_indices_device(i) = grid_copy.ClosestCellID(point);
       },
       num_out_of_bounds);
 

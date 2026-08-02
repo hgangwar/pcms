@@ -6,7 +6,6 @@
 #include "interpolation_helpers.h"
 #include "pcms/utility/mesh_geometry.h"
 
-#include <execution>
 namespace pcms
 {
 

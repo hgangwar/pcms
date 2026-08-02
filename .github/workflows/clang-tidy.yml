@@ -9,6 +9,8 @@ on:
     branches:
       - main
       - develop
+  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   clang-tidy-check:
@@ -87,7 +89,7 @@ jobs:
       with:
         repo-name: 'omega_h-openmpi'
         repo-path: 'SCOREC/omega_h'
-        repo-ref: '1765836a00b9a64b8b3791f1442ac52f147e43b2'
+        repo-ref: '2b2e778472f48a85a5ff5e70083e3a415e58be72'
         cache: true
         options: '-DCMAKE_CXX_COMPILER=`which mpicxx`
                   -DCMAKE_C_COMPILER=`which mpicc`
@@ -133,7 +135,7 @@ jobs:
       id: clone-petsc
       run: |
         cd ${{ runner.temp }}
-        git clone -b v3.24.2 https://gitlab.com/petsc/petsc.git petsc-openmpi
+        git clone -b v3.25.2 https://gitlab.com/petsc/petsc.git petsc-openmpi
         cd petsc-openmpi
         echo "petsc-commit-hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
@@ -163,7 +165,7 @@ jobs:
       with:
         repo-name: 'redev-openmpi'
         repo-path: 'SCOREC/redev'
-        repo-ref: 'ac09848a5f9b89493e8b679c9080b9efe5538376'
+        repo-ref: 'eb52569702864979f5b7d03d9c082c96f20b2bd5'
         cache: true
         options: '-DCMAKE_CXX_COMPILER=`which mpicxx`
                   -DMPIEXEC_EXECUTABLE=`which mpirun`

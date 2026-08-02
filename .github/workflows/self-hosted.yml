@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - develop
+  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build_and_test:
@@ -82,7 +84,10 @@ jobs:
           echo "KOKKOS_KERNELS_BUILD=$kkkbdir" >> $GITHUB_ENV
 
           # adios2 with and without cuda
-          git clone --branch v2.10.2 https://github.com/ornladios/ADIOS2.git ${workDir}/ADIOS2
+          git clone https://github.com/ornladios/ADIOS2.git ${workDir}/ADIOS2
+          cd ${workDir}/ADIOS2
+          git checkout 7dc7887c1c985a0bf4c96cb2fea1ba92af4c8ebd
+          cd $workDir
           adiosbdir=${workDir}/build-ADIOS2
           cmake -S ${workDir}/ADIOS2 -B $adiosbdir \
             -DCMAKE_INSTALL_PREFIX=$adiosbdir/install \
@@ -106,7 +111,7 @@ jobs:
           # redev
           git clone https://github.com/SCOREC/redev.git ${workDir}/redev
           cd ${workDir}/redev
-          git checkout ac09848a5f9b89493e8b679c9080b9efe5538376
+          git checkout eb52569702864979f5b7d03d9c082c96f20b2bd5
           cd $workDir
           rdbdir=${workDir}/build-redev
           cmake -S ${workDir}/redev -B $rdbdir \

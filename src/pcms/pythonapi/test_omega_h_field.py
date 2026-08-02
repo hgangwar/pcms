@@ -5,6 +5,7 @@ Field-centric Python examples for Omega_h-backed function spaces.
 
 import numpy as np
 import pcms
+import PyOmega_h as omega_h
 
 
 def test_field_methods(world, dim, order, num_components):
@@ -13,9 +14,9 @@ def test_field_methods(world, dim, order, num_components):
     ny = 10 if dim > 1 else 0
     nz = 10 if dim > 2 else 0
 
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 1.0,
         nx, ny, nz,
         False
@@ -48,9 +49,9 @@ def test_field_transfer(world, dim, order, num_components):
     ny = 10 if dim > 1 else 0
     nz = 10 if dim > 2 else 0
 
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 1.0,
         nx, ny, nz,
         False
@@ -89,9 +90,9 @@ def test_field_evaluation(world, dim, order, num_components):
         f"num_components={num_components}"
     )
 
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 1.0,
         nx, ny, nz,
         False
@@ -177,9 +178,9 @@ def test_tag_operations(world, dim):
     ny = 5 if dim > 1 else 0
     nz = 5 if dim > 2 else 0
 
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 1.0,
         nx, ny, nz,
         False
@@ -217,7 +218,7 @@ def test_tag_operations(world, dim):
         np.float64)
       mesh.add_tag(dim, "stress", ncomps, stress_data,
                    internal=False,
-                   array_type=pcms.ArrayType.SymmetricSquareMatrix)
+                   array_type=omega_h.ArrayType.SymmetricSquareMatrix)
       assert mesh.has_tag(dim, "stress")
 
     internal_data = np.zeros(nverts, dtype=np.float64)
@@ -259,9 +260,9 @@ def test_entity_coordinates(world, dim):
     ny = 4 if dim > 1 else 0
     nz = 4 if dim > 2 else 0
 
-    mesh = pcms.build_box(
+    mesh = omega_h.build_box(
         world,
-        pcms.Family.SIMPLEX,
+        omega_h.Family.SIMPLEX,
         1.0, 1.0, 1.0,
         nx, ny, nz,
         False
@@ -271,34 +272,34 @@ def test_entity_coordinates(world, dim):
     assert len(vertex_coords) == mesh.nverts() * dim
 
     if dim >= 2:
-      edge_coords = pcms.average_field(mesh, 1, dim, vertex_coords)
+      edge_coords = omega_h.average_field(mesh, 1, dim, vertex_coords)
       edge_coords_np = np.array(edge_coords).reshape(-1, dim)
       assert edge_coords_np.shape[0] == mesh.nedges()
 
     if dim == 2:
-      elem_coords = pcms.average_field(mesh, 2, dim, vertex_coords)
+      elem_coords = omega_h.average_field(mesh, 2, dim, vertex_coords)
       elem_coords_np = np.array(elem_coords).reshape(-1, dim)
       assert elem_coords_np.shape[0] == mesh.nelems()
 
     if dim == 3:
-      face_coords = pcms.average_field(mesh, 2, dim, vertex_coords)
+      face_coords = omega_h.average_field(mesh, 2, dim, vertex_coords)
       face_coords_np = np.array(face_coords).reshape(-1, dim)
       assert face_coords_np.shape[0] == mesh.nfaces()
 
-      region_coords = pcms.average_field(mesh, 3, dim, vertex_coords)
+      region_coords = omega_h.average_field(mesh, 3, dim, vertex_coords)
       region_coords_np = np.array(region_coords).reshape(-1, dim)
       assert region_coords_np.shape[0] == mesh.nregions()
 
     vertex_field = np.arange(mesh.nverts(), dtype=np.float64)
     mesh.add_tag(0, "test_vertex_field", 1, vertex_field)
-    averaged_field = pcms.average_field(mesh, dim, 1, vertex_field)
+    averaged_field = omega_h.average_field(mesh, dim, 1, vertex_field)
     assert averaged_field.shape[0] == mesh.nents(dim)
 
 
 def main():
     """Run all test cases"""
     print("Testing Omega_h Field Python bindings...")
-    lib = pcms.OmegaHLibrary()
+    lib = omega_h.OmegaHLibrary()
     world = lib.world()
     print("Initialized Omega_h library and world")
 

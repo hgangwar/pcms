@@ -8,6 +8,8 @@ on:
     branches:
       - main
       - develop
+  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   test-build:
@@ -110,12 +112,14 @@ jobs:
       with:
         repo-name: 'omega_h'
         repo-path: 'SCOREC/omega_h'
-        repo-ref: '1765836a00b9a64b8b3791f1442ac52f147e43b2'
+        repo-ref: '2b2e778472f48a85a5ff5e70083e3a415e58be72'
         cache: true
         cache-suffix: ${{ matrix.python_api == 'ON' && '-shared' || '' }}
         options: '-DCMAKE_CXX_COMPILER=`which mpicxx`
                   -DCMAKE_C_COMPILER=`which mpicc`
+                  -DCMAKE_BUILD_TYPE="RelWithDebInfo"
                   -DBUILD_SHARED_LIBS=${{ matrix.python_api }}
+                  -DOmega_h_USE_pybind11=${{ matrix.python_api }}
                   -DOmega_h_USE_MPI=ON
                   -DOmega_h_USE_Kokkos=ON
                   -DBUILD_TESTING=OFF
@@ -161,7 +165,7 @@ jobs:
       with:
         repo-name: 'redev'
         repo-path: 'SCOREC/redev'
-        repo-ref: 'ac09848a5f9b89493e8b679c9080b9efe5538376'
+        repo-ref: 'eb52569702864979f5b7d03d9c082c96f20b2bd5'
         cache: true
         cache-suffix: ${{ matrix.python_api == 'ON' && '-shared' || '' }}
         options: '-DCMAKE_CXX_COMPILER=`which mpicxx`
@@ -185,7 +189,7 @@ jobs:
       id: clone-petsc
       run: |
         cd ${{ runner.temp }}
-        git clone -b v3.24.2 https://gitlab.com/petsc/petsc.git petsc
+        git clone -b v3.25.2 https://gitlab.com/petsc/petsc.git petsc
         cd petsc
         echo "petsc-commit-hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
@@ -279,6 +283,7 @@ jobs:
       if: matrix.python_api == 'ON'
       run: |
         export PYTHONPATH=${{ runner.temp }}/build-pcms/install/lib/python3.12/site-packages:$PYTHONPATH
+        export PYTHONPATH=${{ runner.temp }}/build-omega_h/install/lib/python/dist-packages:$PYTHONPATH
         cd ${{ github.workspace }}/src/pcms/pythonapi
         python3 test_file_io.py
         python3 test_omega_h_field.py

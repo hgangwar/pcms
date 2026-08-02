@@ -44,6 +44,7 @@ if (PCMS_ENABLE_OMEGA_H)
             uniform_grid_binary_field.h
             evaluator/uniform_grid.h
             evaluator/uniform_grid_spline.h
+            eqdsk_field.h
             evaluator/mls_options.h
             evaluator/mls_interpolation.hpp
             evaluator/mls_interpolation_impl.hpp
