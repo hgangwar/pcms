@@ -1,32 +1,29 @@
 #pragma once
 
 #include "pcms/transient/participant.hpp"
-
-#include <redev.h>
+#include "pcms/transient/participant_adapter/participant_protocol.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace pcms::transient
 {
 
-// Server-side Participant proxy. Every operation is executed by an
-// external participant process through its own Redev channel.
-class RemoteParticipant final : public Participant
+// Coupler-side Participant implementation. Operations are forwarded through
+// the control protocol to the actual participant process.
+class CouplerParticipant final : public Participant
 {
 public:
   struct Configuration
   {
-    std::string channel;
     std::string participant;
     std::string produced_interface;
     std::string consumed_interface;
-    // Multi-client Redev servers must create every channel before any channel
-    // begins communication. Leave false for the existing eager behavior.
+    // Applications sharing a coupler must all be created before communication
+    // begins. Set this when Connect() must be delayed until that setup is done.
     bool defer_connect = false;
   };
 
@@ -36,7 +33,8 @@ public:
     std::function<void(const InterfaceState&)> send_consumed_field;
   };
 
-  RemoteParticipant(redev::Redev& redev, Configuration configuration);
+  CouplerParticipant(Application& application, MPI_Comm mpi_comm,
+                     Configuration configuration);
   void ConfigureFieldExchange(FieldExchange exchange);
   void Connect();
 
@@ -46,9 +44,8 @@ public:
   void Restore(const Checkpoint& checkpoint) override;
   [[nodiscard]] InterfaceState GetInterface(
     std::string_view name) const override;
-  void SetInterface(
-    std::string_view name,
-    const InterfaceState& state) override;
+  void SetInterface(std::string_view name,
+                    const InterfaceState& state) override;
   [[nodiscard]] Capabilities GetCapabilities() const override;
 
   [[nodiscard]] std::size_t InterfaceSize() const noexcept;
@@ -59,23 +56,18 @@ public:
   void Shutdown();
 
 private:
-  struct RemoteCheckpoint
+  struct CheckpointToken
   {
-    std::int64_t token;
+    std::int64_t value;
   };
 
-  void Send(const std::vector<double>& message) const;
-  [[nodiscard]] std::vector<double> Receive() const;
-  [[nodiscard]] std::vector<double> Request(
-    const std::vector<double>& message) const;
-  static void ExpectOk(const std::vector<double>& response);
+  [[nodiscard]] protocol::Message Request(protocol::Message message) const;
+  static void ExpectOk(const protocol::Message& response);
 
   std::string participant_name_;
   std::string produced_interface_;
   std::string consumed_interface_;
-  mutable redev::Channel channel_;
-  mutable redev::BidirectionalComm<double> communication_;
-  std::size_t outbound_frame_size_ = 0;
+  mutable protocol::ControlChannel control_;
   std::size_t interface_size_ = 0;
   Capabilities capabilities_;
   Real current_time_ = 0.0;

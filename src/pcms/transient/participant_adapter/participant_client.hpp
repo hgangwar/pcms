@@ -1,13 +1,12 @@
 #pragma once
 
+#include "pcms/coupler/coupler.hpp"
 #include "pcms/transient/participant.hpp"
-
-#include <redev.h>
+#include "pcms/transient/participant_adapter/participant_protocol.hpp"
 
 #include <cstddef>
 #include <functional>
 #include <string>
-#include <vector>
 
 namespace pcms::transient
 {
@@ -19,7 +18,6 @@ class ParticipantClient
 public:
   struct Configuration
   {
-    std::string channel;
     std::string produced_interface;
     std::string consumed_interface;
     std::size_t consumed_interface_size = 0;
@@ -32,22 +30,16 @@ public:
     std::function<void()> receive_consumed_field;
   };
 
-  ParticipantClient(redev::Redev& redev, Participant& participant,
-                    Configuration configuration);
+  ParticipantClient(Application& application, MPI_Comm mpi_comm,
+                    Participant& participant, Configuration configuration);
 
   void ConfigureFieldExchange(FieldExchange exchange);
   void Run();
 
 private:
-  void Send(const std::vector<double>& message);
-  [[nodiscard]] std::vector<double> Receive();
-
   Participant* participant_;
   Configuration configuration_;
-  redev::Channel channel_;
-  redev::BidirectionalComm<double> communication_;
-  std::size_t outbound_frame_size_ = 0;
-  std::size_t inbound_frame_size_ = 0;
+  protocol::ControlChannel control_;
   FieldExchange field_exchange_;
 };
 

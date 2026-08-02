@@ -68,8 +68,7 @@ FEMSystem MakeSteadyHeatSystem(mfem::ParMesh& mesh, int order, double kappa,
                                std::span<const double> dirichlet_x)
 {
   FEMSystem system;
-  system.fec =
-    std::make_unique<mfem::H1_FECollection>(order, mesh.Dimension());
+  system.fec = std::make_unique<mfem::H1_FECollection>(order, mesh.Dimension());
   system.fes =
     std::make_unique<mfem::ParFiniteElementSpace>(&mesh, system.fec.get());
   if (system.fes->GetVDim() != 1 || system.fes->GetNDofs() != mesh.GetNV()) {
@@ -119,9 +118,9 @@ double SolveSteadyHeat(FEMSystem& system, double relative_tolerance,
   mfem::OperatorPtr matrix;
   mfem::HypreParVector solution;
   mfem::HypreParVector rhs;
-  system.operator_form->FormLinearSystem(
-    system.essential_true_dofs, *system.temperature, *system.rhs, matrix,
-    solution, rhs);
+  system.operator_form->FormLinearSystem(system.essential_true_dofs,
+                                         *system.temperature, *system.rhs,
+                                         matrix, solution, rhs);
 
   auto* hypre_matrix = matrix.As<mfem::HypreParMatrix>();
   if (hypre_matrix == nullptr)
@@ -241,9 +240,8 @@ void MFEMParticipant::AdvanceTo(pcms::Real target_time)
   time_ = target_time;
 
   if (!first_produced_after_advance_) {
-    first_produced_after_advance_ =
-      support::ExtractLine(*parallel_mesh_, *system_.temperature,
-                           configuration_.produced_x);
+    first_produced_after_advance_ = support::ExtractLine(
+      *parallel_mesh_, *system_.temperature, configuration_.produced_x);
   }
 }
 
@@ -259,8 +257,7 @@ pcms::transient::Checkpoint MFEMParticipant::Save() const
   return pcms::transient::Checkpoint{time_, std::move(saved)};
 }
 
-void MFEMParticipant::Restore(
-  const pcms::transient::Checkpoint& checkpoint)
+void MFEMParticipant::Restore(const pcms::transient::Checkpoint& checkpoint)
 {
   const auto& saved = std::any_cast<const SavedState&>(checkpoint.state);
   if (saved.temperature.size() !=
@@ -271,8 +268,7 @@ void MFEMParticipant::Restore(
   time_ = saved.time;
   consumed_ = saved.consumed;
   for (int i = 0; i < system_.temperature->Size(); ++i)
-    (*system_.temperature)(i) =
-      saved.temperature[static_cast<std::size_t>(i)];
+    (*system_.temperature)(i) = saved.temperature[static_cast<std::size_t>(i)];
 }
 
 pcms::transient::InterfaceState MFEMParticipant::GetInterface(
@@ -284,8 +280,8 @@ pcms::transient::InterfaceState MFEMParticipant::GetInterface(
     *parallel_mesh_, *system_.temperature, configuration_.produced_x));
 }
 
-void MFEMParticipant::SetInterface(
-  std::string_view name, const pcms::transient::InterfaceState& state)
+void MFEMParticipant::SetInterface(std::string_view name,
+                                   const pcms::transient::InterfaceState& state)
 {
   if (name != configuration_.consumed_interface)
     throw std::invalid_argument("MFEMParticipant: unknown consumed interface");
@@ -296,8 +292,8 @@ void MFEMParticipant::SetInterface(
     // PCMS FieldCommunicator has already deserialized the received field
     // directly into system_.temperature. Capture the artificial-boundary
     // trace for the next solve/checkpoint.
-    consumed_ = support::ExtractLine(
-      *parallel_mesh_, *system_.temperature, configuration_.consumed_x);
+    consumed_ = support::ExtractLine(*parallel_mesh_, *system_.temperature,
+                                     configuration_.consumed_x);
   } else {
     consumed_.assign(state.View().begin(), state.View().end());
   }
@@ -383,15 +379,24 @@ testing::MFEMParticipant::Configuration ConfigurationForRole(
   const std::string& role)
 {
   if (role == "A") {
-    return {"mfem_participant_A", "temperature_volume", "right_at_0.6",
-            0.4, 0.6, 0.0, 270.0};
+    return {"mfem_participant_A",
+            "temperature_volume",
+            "right_at_0.6",
+            0.4,
+            0.6,
+            0.0,
+            270.0};
   }
   if (role == "B") {
-    return {"mfem_participant_B", "temperature_volume", "left_at_0.4",
-            0.6, 0.4, 1.0, 300.0};
+    return {"mfem_participant_B",
+            "temperature_volume",
+            "left_at_0.4",
+            0.6,
+            0.4,
+            1.0,
+            300.0};
   }
-  throw std::invalid_argument(
-    "mfem_participant role must be A or B");
+  throw std::invalid_argument("mfem_participant role must be A or B");
 }
 
 int RunParticipant(const std::string& role, const std::string& mesh_path)
@@ -401,96 +406,85 @@ int RunParticipant(const std::string& role, const std::string& mesh_path)
   Log(role, "starting; mesh=" + mesh_path);
   auto mesh = std::make_unique<mfem::Mesh>(mesh_path.c_str(), 1, 1);
   Log(role, "loaded serial MFEM mesh: dimension=" +
-            std::to_string(mesh->Dimension()) + ", vertices=" +
-            std::to_string(mesh->GetNV()) + ", elements=" +
-            std::to_string(mesh->GetNE()));
-  testing::MFEMParticipant participant(
-    MPI_COMM_WORLD, std::move(mesh), configuration);
-  Log(role, "configured heat problem: physical boundary x=" +
-            std::to_string(configuration.physical_boundary_x) +
-            " at T=" +
-            std::to_string(configuration.physical_temperature) +
-            ", produced interface x=" +
-            std::to_string(configuration.produced_x) +
-            ", consumed interface x=" +
-            std::to_string(configuration.consumed_x));
-  Log(role, "parallel finite-element space: local vertices=" +
-            std::to_string(participant.Mesh().GetNV()) +
-            ", local DOFs=" +
-            std::to_string(participant.Space().GetNDofs()) +
-            ", true DOFs=" +
-            std::to_string(participant.Space().GlobalTrueVSize()) +
-            ", interface DOFs=" +
-            std::to_string(participant.InterfaceSize()));
+              std::to_string(mesh->Dimension()) +
+              ", vertices=" + std::to_string(mesh->GetNV()) +
+              ", elements=" + std::to_string(mesh->GetNE()));
+  testing::MFEMParticipant participant(MPI_COMM_WORLD, std::move(mesh),
+                                       configuration);
+  Log(role,
+      "configured heat problem: physical boundary x=" +
+        std::to_string(configuration.physical_boundary_x) +
+        " at T=" + std::to_string(configuration.physical_temperature) +
+        ", produced interface x=" + std::to_string(configuration.produced_x) +
+        ", consumed interface x=" + std::to_string(configuration.consumed_x));
+  Log(role,
+      "parallel finite-element space: local vertices=" +
+        std::to_string(participant.Mesh().GetNV()) +
+        ", local DOFs=" + std::to_string(participant.Space().GetNDofs()) +
+        ", true DOFs=" + std::to_string(participant.Space().GlobalTrueVSize()) +
+        ", interface DOFs=" + std::to_string(participant.InterfaceSize()));
 
-  redev::Redev redev(MPI_COMM_WORLD, redev::ProcessType::Client);
-  pcms::transient::ParticipantClient client(
-    redev, participant,
-    {channel_name, "temperature_volume",
-     role == "A" ? "right_at_0.6" : "left_at_0.4",
-     participant.InterfaceSize(),
-     [&participant] { return participant.MaximumExactError(); }});
-  Log(role, "created transient command channel '" + channel_name + "'");
-
-  pcms::Coupler field_coupler(
-    "mfem_overlap_fields", MPI_COMM_WORLD, false, {});
-  auto* field_app = field_coupler.AddApplication(
-    channel_name + "_field", "", redev::TransportType::SST);
+  pcms::Coupler field_coupler("mfem_overlap_fields", MPI_COMM_WORLD, false, {});
+  auto* field_app = field_coupler.AddApplication(channel_name + "_field", "",
+                                                 redev::TransportType::SST);
   constexpr int overlap_attribute = 1;
   const std::string field_name = "temperature_volume";
-  pcms::MFEMFieldFactory field_factory(
-    participant.Mesh(), participant.Space(), participant.Temperature(),
-    pcms::CoordinateSystem::Cartesian);
-  auto overlap = pcms::MFEMLayout::OverlapMaskFromAttribute(
-    participant.Mesh(), overlap_attribute);
+  pcms::MFEMFieldFactory field_factory(participant.Mesh(), participant.Space(),
+                                       participant.Temperature(),
+                                       pcms::CoordinateSystem::Cartesian);
+  auto overlap = pcms::MFEMLayout::OverlapMaskFromAttribute(participant.Mesh(),
+                                                            overlap_attribute);
   const std::size_t overlap_dofs = static_cast<std::size_t>(
     std::count(overlap.data(), overlap.data() + overlap.size(), true));
-  Log(role, "MFEM field layout: owned DOFs=" +
-            std::to_string(
-              field_factory.GetLayout()->GetNumOwnedDofHolder()) +
-            ", overlap DOFs=" + std::to_string(overlap_dofs) +
-            ", overlap element attribute=" +
-            std::to_string(overlap_attribute));
+  Log(role,
+      "MFEM field layout: owned DOFs=" +
+        std::to_string(field_factory.GetLayout()->GetNumOwnedDofHolder()) +
+        ", overlap DOFs=" + std::to_string(overlap_dofs) +
+        ", overlap element attribute=" + std::to_string(overlap_attribute));
   field_app->SetLayoutOverlapMask(
-    field_name,
-    std::make_unique<pcms::OverlapMask>(
-      static_cast<std::size_t>(
-        field_factory.GetLayout()->GetNumOwnedDofHolder()),
-      overlap));
+    field_name, std::make_unique<pcms::OverlapMask>(
+                  static_cast<std::size_t>(
+                    field_factory.GetLayout()->GetNumOwnedDofHolder()),
+                  overlap));
   field_app->AddLayout(field_name, field_factory.GetLayout());
-  auto field = field_app->AddField(
-    field_name, field_factory.CreateField<pcms::Real>());
+  auto field =
+    field_app->AddField(field_name, field_factory.CreateField<pcms::Real>());
+
+  pcms::transient::ParticipantClient client(
+    *field_app, MPI_COMM_WORLD, participant,
+    {"temperature_volume", role == "A" ? "right_at_0.6" : "left_at_0.4",
+     participant.InterfaceSize(),
+     [&participant] { return participant.MaximumExactError(); }});
+  Log(role, "created transient GDI control on PCMS application '" +
+              channel_name + "_field'");
 
   int send_count = 0;
   int receive_count = 0;
-  client.ConfigureFieldExchange({
-    [field_app, field, &participant, &role, &send_count] {
-      ++send_count;
-      const auto produced = participant.GetInterface("temperature_volume");
-      Log(role, "field send #" + std::to_string(send_count) +
-                  ": produced trace " +
-                  ValuesSummary(produced.View()));
-      field_app->SendPhase([&] { field.Send(); });
-      Log(role, "field send #" + std::to_string(send_count) +
-                  ": complete");
-    },
-    [field_app, field, &participant, &role, &receive_count] {
-      ++receive_count;
-      Log(role, "field receive #" + std::to_string(receive_count) +
-                  ": begin");
-      field_app->ReceivePhase([&] { field.Receive(); });
-      const auto consumed = testing::support::ExtractLine(
-        participant.Mesh(), participant.Temperature(),
-        role == "A" ? 0.6 : 0.4);
-      Log(role, "field receive #" + std::to_string(receive_count) +
-                  ": consumed trace " + ValuesSummary(consumed));
-    }});
+  client.ConfigureFieldExchange(
+    {[field_app, field, &participant, &role, &send_count] {
+       ++send_count;
+       const auto produced = participant.GetInterface("temperature_volume");
+       Log(role, "field send #" + std::to_string(send_count) +
+                   ": produced trace " + ValuesSummary(produced.View()));
+       field_app->SendPhase([&] { field.Send(); });
+       Log(role, "field send #" + std::to_string(send_count) + ": complete");
+     },
+     [field_app, field, &participant, &role, &receive_count] {
+       ++receive_count;
+       Log(role, "field receive #" + std::to_string(receive_count) + ": begin");
+       field_app->ReceivePhase([&] { field.Receive(); });
+       const auto consumed = testing::support::ExtractLine(
+         participant.Mesh(), participant.Temperature(),
+         role == "A" ? 0.6 : 0.4);
+       Log(role, "field receive #" + std::to_string(receive_count) +
+                   ": consumed trace " + ValuesSummary(consumed));
+     }});
   Log(role, "field exchange configured; entering participant command loop");
   client.Run();
-  Log(role, "shutdown received; field sends=" +
-            std::to_string(send_count) + ", field receives=" +
-            std::to_string(receive_count) + ", maximum exact error=" +
-            std::to_string(participant.MaximumExactError()));
+  Log(role, "shutdown received; field sends=" + std::to_string(send_count) +
+              ", field receives=" + std::to_string(receive_count) +
+              ", maximum exact error=" +
+              std::to_string(participant.MaximumExactError()));
   return EXIT_SUCCESS;
 }
 

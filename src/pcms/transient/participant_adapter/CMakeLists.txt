@@ -1,10 +1,12 @@
 set(PCMS_TRANSIENT_PARTICIPANT_ADAPTER_HEADERS
     participant_protocol.hpp
     participant_client.hpp
+    coupler_participant.hpp
     remote_participant.hpp)
 set(PCMS_TRANSIENT_PARTICIPANT_ADAPTER_SOURCES
+    participant_protocol.cpp
     participant_client.cpp
-    remote_participant.cpp)
+    coupler_participant.cpp)
 
 if(PCMS_ENABLE_OMEGA_H)
   list(APPEND PCMS_TRANSIENT_PARTICIPANT_ADAPTER_HEADERS
@@ -33,12 +35,12 @@ target_compile_features(
   pcms_transient_participant_adapter PUBLIC cxx_std_20)
 target_link_libraries(
   pcms_transient_participant_adapter
-  PUBLIC pcms::transient redev::redev MPI::MPI_CXX)
+  PUBLIC pcms::transient pcms::coupler redev::redev MPI::MPI_CXX)
 
 if(PCMS_ENABLE_OMEGA_H)
   target_link_libraries(
     pcms_transient_participant_adapter
-    PUBLIC pcms::coupler pcms::field pcms::transfer Omega_h::omega_h)
+    PUBLIC pcms::field pcms::transfer Omega_h::omega_h)
 endif()
 
 target_include_directories(
