@@ -189,7 +189,7 @@ int main(int argc, char** argv)
 
     const MPI_Comm communicator = world->get_impl();
     redev::LOs server_ranks{0};
-    redev::Reals cuts{0.0, 0.0};
+    redev::Reals cuts{0.0};
     redev::RCBPtn partition(2, server_ranks, cuts);
     redev::Redev redev(
       communicator, redev::Partition{std::move(partition)},
@@ -208,7 +208,7 @@ int main(int argc, char** argv)
     auto right_mesh = ReadCouplerMesh(library, argv[2]);
 
     redev::LOs field_server_ranks{0};
-    redev::Reals field_cuts{0.0, 0.0};
+    redev::Reals field_cuts{0.0};
     redev::RCBPtn field_partition(
       2, field_server_ranks, field_cuts);
     pcms::Coupler field_coupler(
