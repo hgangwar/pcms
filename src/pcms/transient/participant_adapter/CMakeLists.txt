@@ -1,8 +1,7 @@
 set(PCMS_TRANSIENT_PARTICIPANT_ADAPTER_HEADERS
     participant_protocol.hpp
     participant_client.hpp
-    coupler_participant.hpp
-    remote_participant.hpp)
+    coupler_participant.hpp)
 set(PCMS_TRANSIENT_PARTICIPANT_ADAPTER_SOURCES
     participant_protocol.cpp
     participant_client.cpp
