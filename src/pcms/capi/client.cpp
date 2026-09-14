@@ -189,7 +189,8 @@ PcmsFieldHandle pcms_add_field(PcmsClientHandle client_handle, const char* name,
 {
   auto* client =
     reinterpret_cast<pcms::ClientState*>(client_handle.couplerPointer);
-  auto* app = reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
+  auto* app =
+    reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
   auto* adapter =
     reinterpret_cast<pcms::FieldAdapterVariant*>(adapter_handle.pointer);
   PCMS_ALWAYS_ASSERT(client != nullptr);
@@ -212,14 +213,16 @@ PcmsFieldHandle pcms_add_field(PcmsClientHandle client_handle, const char* name,
 
 void pcms_send_field_name(PcmsClientHandle client_handle, const char* name)
 {
-  auto* app = reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
+  auto* app =
+    reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
   PCMS_ALWAYS_ASSERT(app != nullptr);
   app->SendField(name);
 }
 
 void pcms_receive_field_name(PcmsClientHandle client_handle, const char* name)
 {
-  auto* app = reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
+  auto* app =
+    reinterpret_cast<pcms::ApplicationComm*>(client_handle.appPointer);
   PCMS_ALWAYS_ASSERT(app != nullptr);
   app->ReceiveField(name);
 }

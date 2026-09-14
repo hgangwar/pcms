@@ -11,7 +11,8 @@ static constexpr int COMM_ROUNDS = 1;
 void xgc_delta_f(MPI_Comm comm)
 {
   pcms::CouplerComm coupler("proxy_couple", comm, false, {});
-  pcms::ApplicationComm* app = coupler.AddApplication("proxy_couple_xgc_delta_f");
+  pcms::ApplicationComm* app =
+    coupler.AddApplication("proxy_couple_xgc_delta_f");
 
   std::vector<pcms::GO> mean_storage(1);
   auto mean = pcms::make_array_view(mean_storage);
@@ -39,7 +40,8 @@ void xgc_delta_f(MPI_Comm comm)
 void xgc_total_f(MPI_Comm comm)
 {
   pcms::CouplerComm coupler("proxy_couple", comm, false, {});
-  pcms::ApplicationComm* app = coupler.AddApplication("proxy_couple_xgc_total_f");
+  pcms::ApplicationComm* app =
+    coupler.AddApplication("proxy_couple_xgc_total_f");
 
   std::vector<pcms::GO> mean_storage(1);
   auto mean = pcms::make_array_view(mean_storage);

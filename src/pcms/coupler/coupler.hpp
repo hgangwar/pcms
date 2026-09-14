@@ -123,8 +123,8 @@ class ApplicationComm
 {
 public:
   ApplicationComm(std::string name, MPI_Comm comm, redev::Redev& redev,
-              adios2::Params params, redev::TransportType transport_type,
-              std::string path)
+                  adios2::Params params, redev::TransportType transport_type,
+                  std::string path)
     : mpi_comm_(comm),
       redev_(redev),
       channel_{redev_.CreateAdiosChannel(std::move(name), std::move(params),
@@ -292,8 +292,8 @@ private:
 
 template <typename T>
 DataHandle<T> ApplicationComm::AddData(std::string name,
-                                   Rank1View<T, HostMemorySpace> data,
-                                   MPI_Comm mpi_comm)
+                                       Rank1View<T, HostMemorySpace> data,
+                                       MPI_Comm mpi_comm)
 {
   PCMS_FUNCTION_TIMER;
   auto [it, inserted] = global_data_interfaces_.try_emplace(
@@ -333,7 +333,7 @@ private:
 
 public:
   CouplerComm(std::string name, MPI_Comm comm, bool isServer,
-          redev::Partition partition)
+              redev::Partition partition)
     : name_(std::move(name)),
       mpi_comm_(comm),
       redev_(SetUpRedev(isServer, std::move(partition)))
@@ -435,7 +435,7 @@ void pcms::ApplicationComm::RegisterFieldCommunicator(
 
 template <typename T>
 pcms::FieldHandle<T> pcms::ApplicationComm::AddField(Field<T>&& field,
-                                                 bool participates)
+                                                     bool participates)
 {
   return AddField(std::move(field), std::make_unique<FieldSerializer<T>>(),
                   participates);
@@ -466,8 +466,8 @@ pcms::FieldHandle<T> pcms::ApplicationComm::AddField(
 }
 
 template <typename T>
-pcms::FunctionHandle<T> pcms::ApplicationComm::AddFunction(Function<T>&& function,
-                                                       bool participates)
+pcms::FunctionHandle<T> pcms::ApplicationComm::AddFunction(
+  Function<T>&& function, bool participates)
 {
   return AddFunction(std::move(function),
                      std::make_unique<FieldSerializer<T>>(), participates);

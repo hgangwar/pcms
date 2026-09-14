@@ -24,8 +24,8 @@ namespace ts = test_support;
 // maximum flexibility moving forward
 //
 
-[[nodiscard]]
-static std::string MakeFieldName(const std::string& name, int plane)
+[[nodiscard]] static std::string MakeFieldName(const std::string& name,
+                                               int plane)
 {
   std::stringstream field_name;
   field_name << name;
@@ -40,8 +40,7 @@ struct RegisteredField
   pcms::FieldHandle<pcms::Real> handle;
 };
 
-[[nodiscard]]
-static RegisteredField AddField(
+[[nodiscard]] static RegisteredField AddField(
   pcms::ApplicationComm* application,
   const std::shared_ptr<pcms::LagrangeFunctionSpace>& function_space,
   const std::string& name, const std::string& path, int plane)
@@ -199,8 +198,9 @@ void omegah_coupler(MPI_Comm comm, Omega_h::Mesh& mesh,
   MPI_Comm_rank(comm, &rank);
   auto time1 = std::chrono::steady_clock::now();
 
-  pcms::CouplerComm cpl("xgc_n0_coupling", comm, true,
-                    redev::Partition{ts::setupServerPartition(mesh, cpn_file)});
+  pcms::CouplerComm cpl(
+    "xgc_n0_coupling", comm, true,
+    redev::Partition{ts::setupServerPartition(mesh, cpn_file)});
   const auto partition = std::get<redev::ClassPtn>(cpl.GetPartition());
   std::string numbering = "simNumbering";
   PCMS_ALWAYS_ASSERT(mesh.has_tag(0, numbering));
