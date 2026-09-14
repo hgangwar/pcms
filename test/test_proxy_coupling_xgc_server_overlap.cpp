@@ -25,7 +25,7 @@ namespace ts = test_support;
 void xgc_coupler_with_overlap(MPI_Comm comm, Omega_h::Mesh& mesh,
                               std::string_view cpn_file)
 {
-  pcms::Coupler cpl("proxy_couple_server", comm, true,
+  pcms::CouplerComm cpl("proxy_couple_server", comm, true,
                     redev::Partition{ts::setupServerPartition(mesh, cpn_file)});
   const auto partition = std::get<redev::ClassPtn>(cpl.GetPartition());
 
@@ -141,7 +141,7 @@ void xgc_coupler_with_overlap(MPI_Comm comm, Omega_h::Mesh& mesh,
 void omegah_coupler_with_overlap(MPI_Comm comm, Omega_h::Mesh& mesh,
                                  std::string_view cpn_file)
 {
-  pcms::Coupler cpl("proxy_couple_server", comm, true,
+  pcms::CouplerComm cpl("proxy_couple_server", comm, true,
                     redev::Partition{ts::setupServerPartition(mesh, cpn_file)});
   const auto partition = std::get<redev::ClassPtn>(cpl.GetPartition());
   auto* application = cpl.AddApplication("proxy_couple");

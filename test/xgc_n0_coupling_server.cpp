@@ -42,7 +42,7 @@ struct RegisteredField
 
 [[nodiscard]]
 static RegisteredField AddField(
-  pcms::Application* application,
+  pcms::ApplicationComm* application,
   const std::shared_ptr<pcms::LagrangeFunctionSpace>& function_space,
   const std::string& name, const std::string& path, int plane)
 {
@@ -89,7 +89,7 @@ static void CopyFields(const std::vector<RegisteredField>& from_fields,
   }
 }
 
-void SendRecvDensity(pcms::Application* core, pcms::Application* edge,
+void SendRecvDensity(pcms::ApplicationComm* core, pcms::ApplicationComm* edge,
                      XGCAnalysis& core_analysis, XGCAnalysis& edge_analysis,
                      int rank)
 {
@@ -142,7 +142,7 @@ void SendRecvDensity(pcms::Application* core, pcms::Application* edge,
   if (!rank)
     ts::printTime("Send Density", min, max, avg);
 }
-void SendRecvPotential(pcms::Application* core, pcms::Application* edge,
+void SendRecvPotential(pcms::ApplicationComm* core, pcms::ApplicationComm* edge,
                        XGCAnalysis& core_analysis, XGCAnalysis& edge_analysis,
                        int rank)
 {
@@ -199,7 +199,7 @@ void omegah_coupler(MPI_Comm comm, Omega_h::Mesh& mesh,
   MPI_Comm_rank(comm, &rank);
   auto time1 = std::chrono::steady_clock::now();
 
-  pcms::Coupler cpl("xgc_n0_coupling", comm, true,
+  pcms::CouplerComm cpl("xgc_n0_coupling", comm, true,
                     redev::Partition{ts::setupServerPartition(mesh, cpn_file)});
   const auto partition = std::get<redev::ClassPtn>(cpl.GetPartition());
   std::string numbering = "simNumbering";

@@ -74,7 +74,7 @@ static void test_shared_layout(Omega_h::Library& lib,
 
   if (is_server) {
     auto partition = setupServerPartition(mesh, cpn_file);
-    pcms::Coupler cpl("shared_layout_server", mpi_comm, true,
+    pcms::CouplerComm cpl("shared_layout_server", mpi_comm, true,
                       redev::Partition{partition});
     auto* app = cpl.AddApplication("shared_layout");
     auto factory = pcms::LagrangeFunctionSpace::FromMesh(
@@ -93,7 +93,7 @@ static void test_shared_layout(Omega_h::Library& lib,
       f2.Send();
     });
   } else {
-    pcms::Coupler cpl("shared_layout_client", mpi_comm, false,
+    pcms::CouplerComm cpl("shared_layout_client", mpi_comm, false,
                       redev::Partition{});
     auto* app = cpl.AddApplication("shared_layout");
     auto factory = pcms::LagrangeFunctionSpace::FromMesh(
