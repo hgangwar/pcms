@@ -171,6 +171,7 @@ OmegaHLagrangeLayout::OmegaHLagrangeLayout(
   owned_ = BuildOwned(mesh_, entity_dim, owned_mask);
   owned_host_ =
     Kokkos::View<bool*, HostMemorySpace>("owned_host", owned_.size());
+  Kokkos::deep_copy(owned_host_, owned_);
 
   class_ids_ = Omega_h::Read<Omega_h::ClassId>(
     mesh_.get_array<Omega_h::ClassId>(entity_dim, "class_id"));

@@ -25,7 +25,7 @@ struct Data
   PetscInt num_target_dofs = 0;
 };
 
-template <int TgtOrder>
+template <int Dim, int TgtOrder>
 Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
                    const OmegaHLagrangeLayout& target_layout, int quad_order);
 
@@ -41,24 +41,39 @@ Data BuildData(const std::shared_ptr<const OmegaHLagrangeLayout>& source_layout,
     target_coordinate_system, target_layout, "OmegaHIntersectionRHSIntegrator",
     "target");
 
+  const int dim = target_layout->GetMesh().dim();
+  if (source_layout->GetMesh().dim() != dim) {
+    throw pcms_error("OmegaHIntersectionRHSIntegrator: source and target mesh "
+                     "dimensions differ");
+  }
+
   // The integrand f_src * phi_target has polynomial degree source_order +
-  // target_order on each intersection subtriangle; integrate it exactly (with a
+  // target_order on each intersection sub-simplex; integrate it exactly (with a
   // 1-point floor so a P0->P0 pair still gets a valid rule).
   const int quad_order =
     std::max(1, source_layout->GetOrder() + target_layout->GetOrder());
 
   return detail::DispatchByOrder(target_layout->GetOrder(), [&](auto order_c) {
     constexpr int TgtOrder = decltype(order_c)::value;
-    return BuildDataImpl<TgtOrder>(*source_layout, *target_layout, quad_order);
+    if (dim == 3) {
+      return BuildDataImpl<3, TgtOrder>(*source_layout, *target_layout,
+                                        quad_order);
+    }
+    return BuildDataImpl<2, TgtOrder>(*source_layout, *target_layout,
+                                      quad_order);
   });
 }
 
-template <int TgtOrder>
+template <int Dim, int TgtOrder>
 Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
                    const OmegaHLagrangeLayout& target_layout, int quad_order)
 {
-  using Basis = detail::TargetTriBasis<TgtOrder>;
+  using Basis = detail::TargetSimplexBasis<Dim, TgtOrder>;
   constexpr int ndof = Basis::ndof;
+  // Reference-to-physical Jacobian factor for a simplex: the reference simplex
+  // measure is 1/Dim! (1/2 in 2D, 1/6 in 3D), so a physical sub-simplex of
+  // measure `m` scales the reference quadrature weights by Dim! * m.
+  constexpr Omega_h::Real ref_factor = (Dim == 3) ? 6.0 : 2.0;
 
   Omega_h::Mesh& source_mesh = source_layout.GetMesh();
   Omega_h::Mesh& target_mesh = target_layout.GetMesh();
@@ -66,13 +81,11 @@ Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
   const auto intersections = intersectTargets(source_mesh, target_mesh);
 
   const auto& tgt_coords = target_mesh.coords();
-  const auto& tgt_faces2nodes =
-    target_mesh.ask_down(Omega_h::FACE, Omega_h::VERT).ab2b;
+  const auto& tgt_elems2nodes = target_mesh.ask_down(Dim, Omega_h::VERT).ab2b;
   const auto& src_coords = source_mesh.coords();
-  const auto& src_faces2nodes =
-    source_mesh.ask_down(Omega_h::FACE, Omega_h::VERT).ab2b;
+  const auto& src_elems2nodes = source_mesh.ask_down(Dim, Omega_h::VERT).ab2b;
 
-  detail::IntegrationData ip_data(quad_order);
+  detail::IntegrationData<Dim> ip_data(quad_order);
   const int npts = ip_data.size();
   auto bary_coords = ip_data.bary_coords; // device view
   auto weights = ip_data.weights;         // device view
@@ -88,12 +101,10 @@ Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
   Kokkos::parallel_for(
     "rhs_count", nelems, KOKKOS_LAMBDA(int elm) {
       int count = 0;
-      detail::ForEachIntersectionSubtriangle(
+      detail::ForEachIntersectionSubsimplex<Dim>(
         elm, {tgt2src_offsets, tgt2src_indices}, tgt_coords, src_coords,
-        tgt_faces2nodes, src_faces2nodes,
-        [&](const Omega_h::Few<Omega_h::Vector<2>, 3>&,
-            const r3d::Few<r3d::Vector<2>, 3>&,
-            const r3d::Few<r3d::Vector<2>, 3>&, int,
+        tgt_elems2nodes, src_elems2nodes,
+        [&](const Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1>&, int,
             Omega_h::Real) { count += npts; });
       ip_counts[elm] = count;
     });
@@ -105,7 +116,7 @@ Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
 
   // Pass 2: fill coords, node_gids, and coeffs on device. node_gids/coeffs hold
   // ndof (target DOFs per element) entries per integration point.
-  Kokkos::View<Real**, DeviceMemorySpace> coords("rhs_coords", num_pts, 2);
+  Kokkos::View<Real**, DeviceMemorySpace> coords("rhs_coords", num_pts, Dim);
   Kokkos::View<PetscInt*, DeviceMemorySpace> node_gids(
     "rhs_node_gids", static_cast<std::size_t>(num_pts) * ndof);
   Kokkos::View<Real*, DeviceMemorySpace> coeffs(
@@ -113,37 +124,45 @@ Data BuildDataImpl(const OmegaHLagrangeLayout& source_layout,
 
   Kokkos::parallel_for(
     "rhs_fill", nelems, KOKKOS_LAMBDA(int elm) {
-      const auto tgt_verts = Omega_h::gather_verts<3>(tgt_faces2nodes, elm);
-      const Omega_h::Matrix<2, 3> tgt_vert_mat =
-        Omega_h::gather_vectors<3, 2>(tgt_coords, tgt_verts);
-      Omega_h::Few<Omega_h::Vector<2>, 3> tgt_omh;
-      for (int i = 0; i < 3; ++i)
-        tgt_omh[i] = {tgt_vert_mat[i][0], tgt_vert_mat[i][1]};
+      const auto tgt_verts =
+        Omega_h::gather_verts<Dim + 1>(tgt_elems2nodes, elm);
+      const Omega_h::Matrix<Dim, Dim + 1> tgt_vert_mat =
+        Omega_h::gather_vectors<Dim + 1, Dim>(tgt_coords, tgt_verts);
+      Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1> tgt_omh;
+      for (int i = 0; i < Dim + 1; ++i) {
+        for (int d = 0; d < Dim; ++d) {
+          tgt_omh[i][d] = tgt_vert_mat[i][d];
+        }
+      }
 
       int ip_local = 0;
       const int offset = ip_offsets[elm];
 
-      detail::ForEachIntersectionSubtriangle(
+      detail::ForEachIntersectionSubsimplex<Dim>(
         elm, {tgt2src_offsets, tgt2src_indices}, tgt_coords, src_coords,
-        tgt_faces2nodes, src_faces2nodes,
-        [&](const Omega_h::Few<Omega_h::Vector<2>, 3>& tri,
-            const r3d::Few<r3d::Vector<2>, 3>&,
-            const r3d::Few<r3d::Vector<2>, 3>&, int, Omega_h::Real area) {
+        tgt_elems2nodes, src_elems2nodes,
+        [&](const Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1>& sub, int,
+            Omega_h::Real measure) {
           for (int ip_idx = 0; ip_idx < npts; ++ip_idx) {
-            const auto bary = bary_coords(ip_idx);
+            Omega_h::Vector<Dim + 1> bary;
+            for (int d = 0; d < Dim + 1; ++d) {
+              bary[d] = bary_coords(ip_idx, d);
+            }
             const double w = weights(ip_idx);
-            const auto pt = detail::GlobalFromBarycentric(bary, tri);
+            const auto pt = detail::GlobalFromBarycentric<Dim>(bary, sub);
 
             Omega_h::Real basis[ndof];
             Basis::Values(pt, tgt_omh, basis);
 
             const int global_ip = offset + ip_local;
-            coords(global_ip, 0) = pt[0];
-            coords(global_ip, 1) = pt[1];
+            for (int d = 0; d < Dim; ++d) {
+              coords(global_ip, d) = pt[d];
+            }
             for (int k = 0; k < ndof; ++k) {
               node_gids(global_ip * ndof + k) = static_cast<PetscInt>(
                 Basis::Index(global_to_local, elm, tgt_verts, k));
-              coeffs(global_ip * ndof + k) = basis[k] * w * 2.0 * area;
+              coeffs(global_ip * ndof + k) =
+                basis[k] * w * ref_factor * measure;
             }
             ++ip_local;
           }

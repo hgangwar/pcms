@@ -4,51 +4,66 @@
 
 namespace pcms
 {
+namespace
+{
+// Construct the source-mesh containing-element search appropriate to the
+// spatial dimension: a uniform 20^Dim background grid over the source mesh.
+template <int Dim>
+auto MakeGridPointSearch(Omega_h::Mesh& source_mesh)
+{
+  if constexpr (Dim == 3) {
+    return pcms::GridPointSearch3D(source_mesh, 20, 20, 20);
+  } else {
+    return pcms::GridPointSearch2D(source_mesh, 20, 20);
+  }
+}
+} // namespace
+
+template <int Dim>
 void FindIntersections::adjBasedIntersectSearch(
   const Omega_h::LOs& tgt2src_offsets,
   Omega_h::Write<Omega_h::LO>& nIntersections,
   Omega_h::Write<Omega_h::LO>& tgt2src_indices, bool is_count_only)
 {
-
+  // Element entity dimension equals the spatial dimension (FACE for 2D, REGION
+  // for 3D); measures are triangle areas (2D) or tet volumes (3D).
   const auto& tgt_coords = target_mesh_.coords();
   const auto& src_coords = source_mesh_.coords();
-  const auto& tgt_faces2nodes =
-    target_mesh_.ask_down(Omega_h::FACE, Omega_h::VERT).ab2b;
-  const auto& src_faces2nodes =
-    source_mesh_.ask_down(Omega_h::FACE, Omega_h::VERT).ab2b;
-  const auto& src_elem_areas = measure_elements_real(&source_mesh_);
-  const auto& tgt_elem_areas = measure_elements_real(&target_mesh_);
+  const auto& tgt_elems2nodes = target_mesh_.ask_down(Dim, Omega_h::VERT).ab2b;
+  const auto& src_elems2nodes = source_mesh_.ask_down(Dim, Omega_h::VERT).ab2b;
+  const auto& src_elem_measures = measure_elements_real(&source_mesh_);
+  const auto& tgt_elem_measures = measure_elements_real(&target_mesh_);
   const auto& t2t =
     source_mesh_.ask_dual(); // gives connected element neighbors
   const auto& t2tt = t2t.a2ab;
   const auto& tt2t = t2t.ab2b;
 
-  const auto flat_centroids =
-    pcms::get_entity_centroids(target_mesh_, Omega_h::FACE);
+  const auto flat_centroids = pcms::get_entity_centroids(target_mesh_, Dim);
   // Convert layout_right 1D Omega_h array to 2D Kokkos view with correct layout
-  auto centroids = ConvertCoordsTo2D(flat_centroids, target_mesh_.nfaces(), 2);
+  auto centroids =
+    ConvertCoordsTo2D(flat_centroids, target_mesh_.nelems(), Dim);
 
-  pcms::GridPointSearch2D search_cell(source_mesh_, 20, 20);
+  auto search_cell = MakeGridPointSearch<Dim>(source_mesh_);
   auto results = search_cell(centroids);
   auto owning_cell_ids = search_cell.GetOwningElementIds(results);
 
-  auto nfaces_target = target_mesh_.nfaces();
+  auto nelems_target = target_mesh_.nelems();
   Omega_h::parallel_for(
-    nfaces_target,
+    nelems_target,
     OMEGA_H_LAMBDA(const Omega_h::LO id) {
       Queue queue;
       Track visited;
 
       auto current_cell_id = owning_cell_ids(id);
-      auto current_tgt_elm_area = tgt_elem_areas[id];
+      auto current_tgt_elm_measure = tgt_elem_measures[id];
 
       OMEGA_H_CHECK_PRINTF(current_cell_id >= 0,
                            "ERROR: source cell id not found for given target "
-                           "centroid %d (%f, %f)\n",
-                           id, centroids(id, 0), centroids(id, 1));
+                           "centroid %d\n",
+                           id);
 
       auto tgt_elm_vert_coords =
-        get_vert_coords_of_elem(tgt_coords, tgt_faces2nodes, id);
+        get_vert_coords_of_elem<Dim>(tgt_coords, tgt_elems2nodes, id);
 
       Omega_h::LO start_counter;
       if (!is_count_only) {
@@ -76,22 +91,45 @@ void FindIntersections::adjBasedIntersectSearch(
           auto neighborElmId = tt2t[i];
 
           if (visited.notVisited(neighborElmId)) {
-            visited.push_back(neighborElmId);
-            auto elm_vert_coords = get_vert_coords_of_elem(
-              src_coords, src_faces2nodes, neighborElmId);
-            r3d::Polytope<2> intersection;
+            // If the visited buffer is full, skip this neighbor so the BFS
+            // terminates. Without this, an unrecorded neighbor stays "not
+            // visited" and is re-queued forever (infinite loop). Mirrors the
+            // guard in adj_search.cpp. Raise PCMS_INTERSECTION_TRACK_SIZE if
+            // this fires.
+            if (!visited.push_back(neighborElmId)) {
+              printf("ERROR: visited buffer full "
+                     "(PCMS_INTERSECTION_TRACK_SIZE=%d) for "
+                     "target %d; some intersections may be missed\n",
+                     PCMS_INTERSECTION_TRACK_SIZE, id);
+              continue;
+            }
+            auto elm_vert_coords = get_vert_coords_of_elem<Dim>(
+              src_coords, src_elems2nodes, neighborElmId);
+            r3d::Polytope<Dim> intersection;
             r3d::intersect_simplices(intersection, tgt_elm_vert_coords,
                                      elm_vert_coords);
-            auto intersected_area = r3d::measure(intersection);
-            auto current_src_elm_area = src_elem_areas[neighborElmId];
+            // Take the magnitude: r3d::measure is signed by the orientation of
+            // the target simplex used to initialize the polytope, which can be
+            // negative for tetrahedra. This mirrors the fabs applied in the
+            // sub-simplex decomposition and mass assembly; without it a
+            // negatively-oriented target element would reject all of its real
+            // overlaps and break conservation.
+            auto intersected_measure = Kokkos::fabs(r3d::measure(intersection));
+            auto current_src_elm_measure = src_elem_measures[neighborElmId];
             auto scale =
-              Kokkos::fmax(current_tgt_elm_area, current_src_elm_area);
-            auto eps = Kokkos::fmax(abs_tol, rel_tol * scale);
-            if (intersection.nverts >= 3 && intersected_area >= eps) {
+              Kokkos::fmax(current_tgt_elm_measure, current_src_elm_measure);
+            auto eps = Kokkos::fmax(PCMS_INTERSECTION_ABS_TOL,
+                                    PCMS_INTERSECTION_REL_TOL * scale);
+            // A valid intersection is a non-degenerate simplex-simplex overlap:
+            // at least Dim+1 vertices (a polygon in 2D, a polyhedron in 3D).
+            if (intersection.nverts >= Dim + 1 && intersected_measure >= eps) {
               count++;
 
               OMEGA_H_CHECK_PRINTF(
-                count < 500, "WARNING: count exceeds 500 for target %d", id);
+                count < PCMS_INTERSECTION_QUEUE_SIZE,
+                "intersection count for target %d reached the cap %d; raise "
+                "PCMS_INTERSECTION_QUEUE_SIZE",
+                id, PCMS_INTERSECTION_QUEUE_SIZE);
 
               queue.push_back(neighborElmId);
 
@@ -113,20 +151,32 @@ void FindIntersections::adjBasedIntersectSearch(
     }, // end of lambda
     "count the number of intersections for each target element");
 }
-IntersectionResults intersectTargets(Omega_h::Mesh& source_mesh,
-                                     Omega_h::Mesh& target_mesh)
+
+// Explicit instantiations for the supported spatial dimensions.
+template void FindIntersections::adjBasedIntersectSearch<2>(
+  const Omega_h::LOs&, Omega_h::Write<Omega_h::LO>&,
+  Omega_h::Write<Omega_h::LO>&, bool);
+template void FindIntersections::adjBasedIntersectSearch<3>(
+  const Omega_h::LOs&, Omega_h::Write<Omega_h::LO>&,
+  Omega_h::Write<Omega_h::LO>&, bool);
+
+namespace
+{
+template <int Dim>
+IntersectionResults intersectTargetsImpl(Omega_h::Mesh& source_mesh,
+                                         Omega_h::Mesh& target_mesh)
 {
   FindIntersections intersect(source_mesh, target_mesh);
 
-  auto nfaces_target = target_mesh.nfaces();
+  auto nelems_target = target_mesh.nelems();
 
   Omega_h::Write<Omega_h::LO> nIntersections(
-    nfaces_target, 0, "number of intersections in each target vertex");
+    nelems_target, 0, "number of intersections in each target element");
 
   Omega_h::Write<Omega_h::LO> tgt2src_indices;
 
-  intersect.adjBasedIntersectSearch(Omega_h::LOs(), nIntersections,
-                                    tgt2src_indices, true);
+  intersect.adjBasedIntersectSearch<Dim>(Omega_h::LOs(), nIntersections,
+                                         tgt2src_indices, true);
 
   Kokkos::fence();
   auto tgt2src_offsets = Omega_h::offset_scan(Omega_h::Read(nIntersections),
@@ -139,9 +189,20 @@ IntersectionResults intersectTargets(Omega_h::Mesh& source_mesh,
     ntotal_intersections, 0,
     "indices of the source elements that intersect the given target element");
 
-  intersect.adjBasedIntersectSearch(tgt2src_offsets, nIntersections,
-                                    tgt2src_indices, false);
+  intersect.adjBasedIntersectSearch<Dim>(tgt2src_offsets, nIntersections,
+                                         tgt2src_indices, false);
   return {.tgt2src_offsets = tgt2src_offsets,
           .tgt2src_indices = Omega_h::read(tgt2src_indices)};
+}
+} // namespace
+
+IntersectionResults intersectTargets(Omega_h::Mesh& source_mesh,
+                                     Omega_h::Mesh& target_mesh)
+{
+  OMEGA_H_CHECK(source_mesh.dim() == target_mesh.dim());
+  if (source_mesh.dim() == 3) {
+    return intersectTargetsImpl<3>(source_mesh, target_mesh);
+  }
+  return intersectTargetsImpl<2>(source_mesh, target_mesh);
 }
 } // namespace pcms

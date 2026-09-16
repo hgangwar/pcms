@@ -12,9 +12,9 @@ namespace pcms
 namespace
 {
 
-// Maps a uniform point on the unit square to uniform barycentric coordinates
-// Shape Distributions (ACM Transactions on Graphics, Vol. 21, No. 4, October
-// 2002.) page 814 Eq 1
+// Maps a uniform point on the unit square to uniform barycentric coordinates on
+// a triangle. Shape Distributions (ACM Transactions on Graphics, Vol. 21,
+// No. 4, October 2002.) page 814 Eq 1.
 KOKKOS_INLINE_FUNCTION Omega_h::Vector<3> UniformTriangleBarycentric(Real u,
                                                                      Real v)
 {
@@ -22,51 +22,96 @@ KOKKOS_INLINE_FUNCTION Omega_h::Vector<3> UniformTriangleBarycentric(Real u,
   return {1.0 - s, s * (1.0 - v), s * v};
 }
 
+// Maps three uniform draws on the unit cube to uniform barycentric coordinates
+// on a tetrahedron via the cut-and-fold method (Rocchini & Cignoni,
+// "Generating Random Points in a Tetrahedron", J. Graphics Tools 2000).
+KOKKOS_INLINE_FUNCTION Omega_h::Vector<4> UniformTetBarycentric(Real s, Real t,
+                                                                Real u)
+{
+  if (s + t > 1.0) { // fold the cube into a prism
+    s = 1.0 - s;
+    t = 1.0 - t;
+  }
+  if (t + u > 1.0) { // fold the prism into a tetrahedron
+    const Real tmp = u;
+    u = 1.0 - s - t;
+    t = 1.0 - tmp;
+  } else if (s + t + u > 1.0) {
+    const Real tmp = u;
+    u = s + t + u - 1.0;
+    s = 1.0 - t - tmp;
+  }
+  const Real a = 1.0 - s - t - u;
+  return {a, s, t, u};
+}
+
+template <int Dim>
+KOKKOS_INLINE_FUNCTION Omega_h::Vector<Dim + 1> UniformSimplexBarycentric(
+  const Real r[Dim])
+{
+  if constexpr (Dim == 3) {
+    return UniformTetBarycentric(r[0], r[1], r[2]);
+  } else {
+    return UniformTriangleBarycentric(r[0], r[1]);
+  }
+}
+
 // Fills coords, node_gids, and coeffs for all samples of one target element.
-// unit_sample_at(s, u, v) provides the s-th unit-square sample.
-template <typename UnitSampleAt>
+// unit_sample_at(s, r) fills the s-th sample's Dim unit-hypercube draws.
+template <int Dim, typename UnitSampleAt>
 KOKKOS_INLINE_FUNCTION void FillElementSamples(
   const int elm, const int samples_per_element,
-  const Omega_h::Reals& mesh_coords, const Omega_h::LOs& faces2nodes,
+  const Omega_h::Reals& mesh_coords, const Omega_h::LOs& elems2nodes,
   const Kokkos::View<const LO*, DeviceMemorySpace>& global_to_local,
   const Kokkos::View<Real**, DeviceMemorySpace>& coords,
   const Kokkos::View<PetscInt*, DeviceMemorySpace>& node_gids,
   const Kokkos::View<Real*, DeviceMemorySpace>& coeffs,
   const UnitSampleAt& unit_sample_at)
 {
-  const auto verts = Omega_h::gather_verts<3>(faces2nodes, elm);
-  const auto vert_coords = Omega_h::gather_vectors<3, 2>(mesh_coords, verts);
-  Omega_h::Few<Omega_h::Vector<2>, 2> basis;
-  basis[0] = vert_coords[1] - vert_coords[0];
-  basis[1] = vert_coords[2] - vert_coords[0];
-  const Real area = Kokkos::fabs(Omega_h::triangle_area_from_basis(basis));
-  const Real weight = area / samples_per_element;
+  constexpr int nv = Dim + 1;
+  const auto verts = Omega_h::gather_verts<nv>(elems2nodes, elm);
+  const auto vert_coords = Omega_h::gather_vectors<nv, Dim>(mesh_coords, verts);
+  Omega_h::Few<Omega_h::Vector<Dim>, Dim> basis;
+  for (int d = 0; d < Dim; ++d) {
+    basis[d] = vert_coords[d + 1] - vert_coords[0];
+  }
+  Real measure;
+  if constexpr (Dim == 3) {
+    measure = Kokkos::fabs(Omega_h::tet_volume_from_basis(basis));
+  } else {
+    measure = Kokkos::fabs(Omega_h::triangle_area_from_basis(basis));
+  }
+  const Real weight = measure / samples_per_element;
 
   for (int s = 0; s < samples_per_element; ++s) {
-    Real u = 0.0;
-    Real v = 0.0;
-    unit_sample_at(s, u, v);
-    const auto bary = UniformTriangleBarycentric(u, v);
+    Real r[Dim];
+    unit_sample_at(s, r);
+    const auto bary = UniformSimplexBarycentric<Dim>(r);
 
     const int i = elm * samples_per_element + s;
-    Real x = 0.0;
-    Real y = 0.0;
-    for (int k = 0; k < 3; ++k) {
-      x += bary[k] * vert_coords[k][0];
-      y += bary[k] * vert_coords[k][1];
-      node_gids(i * 3 + k) = static_cast<PetscInt>(global_to_local(verts[k]));
-      coeffs(i * 3 + k) = bary[k] * weight;
+    Omega_h::Vector<Dim> x;
+    for (int d = 0; d < Dim; ++d) {
+      x[d] = 0.0;
     }
-    coords(i, 0) = x;
-    coords(i, 1) = y;
+    for (int k = 0; k < nv; ++k) {
+      for (int d = 0; d < Dim; ++d) {
+        x[d] += bary[k] * vert_coords[k][d];
+      }
+      node_gids(i * nv + k) = static_cast<PetscInt>(global_to_local(verts[k]));
+      coeffs(i * nv + k) = bary[k] * weight;
+    }
+    for (int d = 0; d < Dim; ++d) {
+      coords(i, d) = x[d];
+    }
   }
 }
 
-// Samples samples_per_element from a uniform random distribution over the
+// Samples samples_per_element from a uniform random distribution over each
 // target element, writing their coordinates, node GIDs, and coefficients.
+template <int Dim>
 void FillElementSamples(
   int nelems, int samples_per_element, const Omega_h::Reals& mesh_coords,
-  const Omega_h::LOs& faces2nodes,
+  const Omega_h::LOs& elems2nodes,
   const Kokkos::View<const LO*, DeviceMemorySpace>& global_to_local,
   const Kokkos::View<Real**, DeviceMemorySpace>& coords,
   const Kokkos::View<PetscInt*, DeviceMemorySpace>& node_gids,
@@ -77,12 +122,13 @@ void FillElementSamples(
     "mc_rhs_fill_random", Kokkos::RangePolicy<DefaultExecutionSpace>(0, nelems),
     KOKKOS_LAMBDA(int elm) {
       auto gen = pool.get_state();
-      FillElementSamples(elm, samples_per_element, mesh_coords, faces2nodes,
-                         global_to_local, coords, node_gids, coeffs,
-                         [&](int /*s*/, Real& u, Real& v) {
-                           u = gen.drand();
-                           v = gen.drand();
-                         });
+      FillElementSamples<Dim>(elm, samples_per_element, mesh_coords,
+                              elems2nodes, global_to_local, coords, node_gids,
+                              coeffs, [&](int /*s*/, Real r[Dim]) {
+                                for (int d = 0; d < Dim; ++d) {
+                                  r[d] = gen.drand();
+                                }
+                              });
       pool.free_state(gen);
     });
   Kokkos::fence();
@@ -113,22 +159,29 @@ OmegaHMonteCarloRHSIntegrator::OmegaHMonteCarloRHSIntegrator(
   }
 
   Omega_h::Mesh& mesh = target_layout->GetMesh();
+  const int dim = mesh.dim();
+  nbary_ = dim + 1;
 
   const int nelems = mesh.nelems();
   const int num_samples = nelems * samples_per_element;
   const auto mesh_coords = mesh.coords();
-  const auto faces2nodes = mesh.ask_down(Omega_h::FACE, Omega_h::VERT).ab2b;
+  const auto elems2nodes = mesh.ask_down(dim, Omega_h::VERT).ab2b;
   const auto global_to_local = target_layout->GetGlobalToLocalPermutation();
 
   Kokkos::View<Real**, DeviceMemorySpace> coords("mc_rhs_coords", num_samples,
-                                                 2);
+                                                 dim);
   Kokkos::View<PetscInt*, DeviceMemorySpace> node_gids(
-    "mc_rhs_node_gids", static_cast<std::size_t>(num_samples) * 3);
+    "mc_rhs_node_gids", static_cast<std::size_t>(num_samples) * nbary_);
   Kokkos::View<Real*, DeviceMemorySpace> coeffs(
-    "mc_rhs_coeffs", static_cast<std::size_t>(num_samples) * 3);
+    "mc_rhs_coeffs", static_cast<std::size_t>(num_samples) * nbary_);
 
-  FillElementSamples(nelems, samples_per_element, mesh_coords, faces2nodes,
-                     global_to_local, coords, node_gids, coeffs, seed);
+  if (dim == 3) {
+    FillElementSamples<3>(nelems, samples_per_element, mesh_coords, elems2nodes,
+                          global_to_local, coords, node_gids, coeffs, seed);
+  } else {
+    FillElementSamples<2>(nelems, samples_per_element, mesh_coords, elems2nodes,
+                          global_to_local, coords, node_gids, coeffs, seed);
+  }
 
   coords_ = std::move(coords);
   node_gids_ = std::move(node_gids);
@@ -173,8 +226,9 @@ Vec OmegaHMonteCarloRHSIntegrator::GetVector() const noexcept
 void OmegaHMonteCarloRHSIntegrator::Assemble(
   Rank2View<const Real, DeviceMemorySpace> sampled_values)
 {
+  const int nbary = nbary_;
   const std::size_t num_samples =
-    static_cast<std::size_t>(node_gids_.extent(0) / 3);
+    static_cast<std::size_t>(node_gids_.extent(0) / nbary);
   PCMS_ALWAYS_ASSERT(static_cast<std::size_t>(sampled_values.extent(0)) ==
                      num_samples);
   PCMS_ALWAYS_ASSERT(sampled_values.extent(1) >= 1);
@@ -187,13 +241,14 @@ void OmegaHMonteCarloRHSIntegrator::Assemble(
     sampled_values.data_handle(), sampled_values.extent(0),
     sampled_values.extent(1));
   Kokkos::View<PetscScalar*, DeviceMemorySpace> coo_vals("mc_rhs_coo_vals",
-                                                         num_samples * 3);
+                                                         num_samples * nbary);
   auto coeffs = coeffs_;
   Kokkos::parallel_for(
     "mc_rhs_coo_vals", static_cast<int>(num_samples), KOKKOS_LAMBDA(int i) {
       const PetscScalar f = static_cast<PetscScalar>(sv(i, 0));
-      for (int j = 0; j < 3; ++j) {
-        coo_vals(i * 3 + j) = static_cast<PetscScalar>(coeffs(i * 3 + j)) * f;
+      for (int j = 0; j < nbary; ++j) {
+        coo_vals(i * nbary + j) =
+          static_cast<PetscScalar>(coeffs(i * nbary + j)) * f;
       }
     });
 

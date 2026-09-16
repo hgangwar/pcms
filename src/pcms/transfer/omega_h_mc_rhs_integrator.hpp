@@ -14,7 +14,8 @@ namespace pcms
 {
 
 // Monte Carlo RHS integrator for conservative L2 projection onto order-1
-// Lagrange spaces on Omega_h 2D simplex meshes.
+// Lagrange spaces on Omega_h simplex meshes (triangles in 2D, tetrahedra in
+// 3D).
 //
 // Instead of intersection-based quadrature, each load-vector entry
 //   b_j = \int phi_j f dx
@@ -57,6 +58,7 @@ private:
     coords_; // [num_pts][dim] sample coordinates
   Kokkos::View<PetscInt*, DeviceMemorySpace> node_gids_; // COO indices
   Kokkos::View<Real*, DeviceMemorySpace> coeffs_;        // basis * |T| / N
+  int nbary_ = 3; // barycentric DOFs per sample (Dim+1): 3 in 2D, 4 in 3D
 };
 
 } // namespace pcms

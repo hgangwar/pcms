@@ -7,8 +7,7 @@
 #include <Omega_h_library.hpp>
 #include <Omega_h_mesh.hpp>
 #include <Omega_h_reduce.hpp>
-#define MAX_SIZE_QUEUE 500
-#define MAX_SIZE_TRACK 800
+#include "pcms/configuration.h"
 
 namespace pcms
 {
@@ -16,7 +15,7 @@ namespace pcms
 class Queue
 {
 private:
-  Omega_h::LO queue_array[MAX_SIZE_QUEUE];
+  Omega_h::LO queue_array[PCMS_INTERSECTION_QUEUE_SIZE];
   int first = 0, last = -1, count = 0;
 
 public:
@@ -45,7 +44,7 @@ public:
 class Track
 {
 private:
-  Omega_h::LO tracking_array[MAX_SIZE_TRACK];
+  Omega_h::LO tracking_array[PCMS_INTERSECTION_TRACK_SIZE];
   int first = 0, last = -1, count = 0;
 
 public:
@@ -68,11 +67,11 @@ public:
 OMEGA_H_INLINE
 void Queue::push_back(const int& item)
 {
-  if (count == MAX_SIZE_QUEUE) {
+  if (count == PCMS_INTERSECTION_QUEUE_SIZE) {
     printf("queue is full %d\n", count);
     return;
   }
-  last = (last + 1) % MAX_SIZE_QUEUE;
+  last = (last + 1) % PCMS_INTERSECTION_QUEUE_SIZE;
   queue_array[last] = item;
   count++;
 }
@@ -84,7 +83,7 @@ void Queue::pop_front()
     printf("queue is empty\n");
     return;
   }
-  first = (first + 1) % MAX_SIZE_QUEUE;
+  first = (first + 1) % PCMS_INTERSECTION_QUEUE_SIZE;
   count--;
 }
 
@@ -103,19 +102,19 @@ bool Queue::isEmpty() const
 OMEGA_H_INLINE
 bool Queue::isFull() const
 {
-  return count == MAX_SIZE_QUEUE;
+  return count == PCMS_INTERSECTION_QUEUE_SIZE;
 }
 
 OMEGA_H_INLINE
 bool Track::push_back(const int& item)
 {
-  if (count == MAX_SIZE_TRACK) {
+  if (count == PCMS_INTERSECTION_TRACK_SIZE) {
     // Visited buffer is full. Report failure so callers can stop expanding the
     // search; otherwise new vertices can never be marked visited and the BFS
     // re-queues them forever (infinite loop).
     return false;
   }
-  last = (last + 1) % MAX_SIZE_TRACK;
+  last = (last + 1) % PCMS_INTERSECTION_TRACK_SIZE;
   tracking_array[last] = item;
   count++;
   return true;
@@ -126,7 +125,7 @@ bool Track::notVisited(const int& item)
 {
   int id;
   for (int i = 0; i < count; ++i) {
-    id = (first + i) % MAX_SIZE_TRACK;
+    id = (first + i) % PCMS_INTERSECTION_TRACK_SIZE;
     if (tracking_array[id] == item) {
       return false;
     }

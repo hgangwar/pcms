@@ -18,16 +18,19 @@ template <typename FieldElement>
 class MassMatrixIntegrator : public MeshField::Integrator
 {
 public:
+  // Linear simplex: numNodes = spatial dim + 1 (3 for triangles, 4 for tets).
+  static constexpr int numNodes = FieldElement::MeshEntDim + 1;
+
   MassMatrixIntegrator(Omega_h::Mesh& mesh_in, FieldElement& fe_in,
                        int order = 2)
     : mesh(mesh_in),
       fe(fe_in),
-      subMatrixSize(3 * 3), // FIXME remove hard coded size
-      elmMassMatrix("elmMassMatrix", mesh_in.nelems() * 3 * 3),
+      subMatrixSize(numNodes * numNodes),
+      elmMassMatrix("elmMassMatrix", mesh_in.nelems() * numNodes * numNodes),
       Integrator(order)
   {
     Kokkos::deep_copy(elmMassMatrix, 0);
-    assert(mesh.dim() == 2); // TODO support 1d,2d,3d
+    assert(mesh.dim() == 2 || mesh.dim() == 3);
     assert(mesh.family() == OMEGA_H_SIMPLEX);
   }
   void atPoints(Kokkos::View<MeshField::Real**> p,
@@ -58,12 +61,18 @@ public:
           }
           const auto N = shapeFn.getValues(localCoord);
           const auto wPt = w(pt);
-          const auto dVPt = dV(pt);
+          // Use the unsigned volume element: MeshField returns a signed
+          // Jacobian determinant, which is negative for tetrahedra whose vertex
+          // ordering has negative orientation. A mass matrix integrates against
+          // the positive volume measure, so take the magnitude (a no-op in 2D
+          // where the differential area is already positive).
+          const auto dVPt = Kokkos::fabs(dV(pt));
           //       printf("Shape Functions: %f, %f, %f \n", N[0], N[1], N[2]);
           //       printf("wPt, dVPt: %f, %f \n", wPt, dVPt);
           for (auto i = 0; i < N.size(); i++) {
             for (auto j = 0; j < N.size(); j++) {
-              massMatrix(elm * subMat + i * 3 + j) += N[i] * N[j] * wPt * dVPt;
+              massMatrix(elm * subMat + i * numNodes + j) +=
+                N[i] * N[j] * wPt * dVPt;
             }
           }
         }

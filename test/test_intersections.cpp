@@ -111,7 +111,7 @@ TEST_CASE("Mesh intersection test with source and target", "[intersection]")
     Omega_h::parallel_for(
       ntgt, OMEGA_H_LAMBDA(int t) {
         auto tgt_vert_coords =
-          get_vert_coords_of_elem(tgt_coords, tgt_faces2verts, t);
+          get_vert_coords_of_elem<2>(tgt_coords, tgt_faces2verts, t);
         int start = intersection.tgt2src_offsets[t];
         int end = intersection.tgt2src_offsets[t + 1];
 
@@ -120,7 +120,7 @@ TEST_CASE("Mesh intersection test with source and target", "[intersection]")
         for (int i = start; i < end; ++i) {
           int sid = intersection.tgt2src_indices[i];
           auto src_vert_coords =
-            get_vert_coords_of_elem(src_coords, src_faces2verts, sid);
+            get_vert_coords_of_elem<2>(src_coords, src_faces2verts, sid);
 
           r3d::Polytope<2> poly;
           r3d::intersect_simplices(poly, tgt_vert_coords, src_vert_coords);

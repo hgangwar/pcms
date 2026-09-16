@@ -14,9 +14,10 @@
 namespace pcms::detail
 {
 
-// Shared checks for a scalar Cartesian Lagrange space on a 2D simplex mesh,
-// independent of order. Order is validated separately by the callers below.
-inline void CheckOmegaHScalarSimplex2DLayout(
+// Shared checks for a scalar Cartesian Lagrange space on a simplex mesh
+// (triangles in 2D, tetrahedra in 3D), independent of order. Order is validated
+// separately by the callers below.
+inline void CheckOmegaHScalarSimplexLayout(
   CoordinateSystem coordinate_system,
   const std::shared_ptr<const OmegaHLagrangeLayout>& layout,
   const char* context, const char* role)
@@ -34,12 +35,13 @@ inline void CheckOmegaHScalarSimplex2DLayout(
                      " space must use Cartesian coordinates");
   }
   const Omega_h::Mesh& mesh = layout->GetMesh();
-  if (mesh.dim() != 2) {
-    throw pcms_error(std::string(context) + ": " + role + " mesh must be 2D");
+  if (mesh.dim() != 2 && mesh.dim() != 3) {
+    throw pcms_error(std::string(context) + ": " + role +
+                     " mesh must be 2D or 3D");
   }
   if (mesh.family() != OMEGA_H_SIMPLEX) {
     throw pcms_error(std::string(context) + ": " + role +
-                     " mesh must be a simplex (triangle) mesh");
+                     " mesh must be a simplex (triangle/tetrahedron) mesh");
   }
 }
 
@@ -49,7 +51,7 @@ inline void CheckOmegaHScalarP1Layout(
   const std::shared_ptr<const OmegaHLagrangeLayout>& layout,
   const char* context, const char* role)
 {
-  CheckOmegaHScalarSimplex2DLayout(coordinate_system, layout, context, role);
+  CheckOmegaHScalarSimplexLayout(coordinate_system, layout, context, role);
   if (layout->GetOrder() != 1) {
     throw pcms_error(std::string(context) + ": " + role +
                      " space must be order-1");
@@ -64,7 +66,7 @@ inline void CheckOmegaHScalarLagrangeLayout(
   const std::shared_ptr<const OmegaHLagrangeLayout>& layout,
   const char* context, const char* role)
 {
-  CheckOmegaHScalarSimplex2DLayout(coordinate_system, layout, context, role);
+  CheckOmegaHScalarSimplexLayout(coordinate_system, layout, context, role);
   const int order = layout->GetOrder();
   if (order != 0 && order != 1) {
     throw pcms_error(std::string(context) + ": " + role +
@@ -72,30 +74,23 @@ inline void CheckOmegaHScalarLagrangeLayout(
   }
 }
 
-[[nodiscard]] OMEGA_H_INLINE Omega_h::Vector<2> GlobalFromBarycentric(
-  const MeshField::Vector2& barycentric_coord,
-  const Omega_h::Few<Omega_h::Vector<2>, 3>& verts_coord)
+// Map barycentric coordinates on a simplex (Dim+1 barycentric components) to
+// the global Cartesian point, given the simplex's Dim+1 vertex coordinates.
+template <int Dim>
+[[nodiscard]] OMEGA_H_INLINE Omega_h::Vector<Dim> GlobalFromBarycentric(
+  const Omega_h::Vector<Dim + 1>& barycentric_coord,
+  const Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1>& verts_coord)
 {
-  Omega_h::Vector<2> real_coords = {0.0, 0.0};
-  const Omega_h::Real xi3 = 1.0 - barycentric_coord[0] - barycentric_coord[1];
-  const Omega_h::Real xi[3] = {barycentric_coord[0], barycentric_coord[1], xi3};
-  for (int i = 0; i < 3; ++i) {
-    real_coords[0] += xi[i] * verts_coord[i][0];
-    real_coords[1] += xi[i] * verts_coord[i][1];
+  Omega_h::Vector<Dim> real_coords;
+  for (int d = 0; d < Dim; ++d) {
+    real_coords[d] = 0.0;
+  }
+  for (int i = 0; i < Dim + 1; ++i) {
+    for (int d = 0; d < Dim; ++d) {
+      real_coords[d] += barycentric_coord[i] * verts_coord[i][d];
+    }
   }
   return real_coords;
-}
-
-[[nodiscard]] OMEGA_H_INLINE Omega_h::Vector<3> EvaluateBarycentric(
-  const Omega_h::Vector<2>& point,
-  const r3d::Few<r3d::Vector<2>, 3>& verts_coord)
-{
-  Omega_h::Few<Omega_h::Vector<2>, 3> omegah_vector;
-  for (int i = 0; i < 3; ++i) {
-    omegah_vector[i][0] = verts_coord[i][0];
-    omegah_vector[i][1] = verts_coord[i][1];
-  }
-  return Omega_h::barycentric_from_global<2, 2>(point, omegah_vector);
 }
 
 [[nodiscard]] OMEGA_H_INLINE int RemoveDuplicateVerticesAndFixLinks(
@@ -191,22 +186,24 @@ inline void CheckOmegaHScalarLagrangeLayout(
   return new_n;
 }
 
-template <typename TriangleOp>
-OMEGA_H_INLINE void ForEachIntersectionSubtriangle(
+// 2D: fan the clipped intersection polygon into triangles anchored at vertex 0,
+// invoking op(sub_triangle, src_elm, area) for each non-degenerate piece.
+template <typename SimplexOp>
+OMEGA_H_INLINE void ForEachIntersectionSubtriangleImpl(
   const int elm, const IntersectionResults& intersection,
   const Omega_h::Reals& tgt_coords, const Omega_h::Reals& src_coords,
-  const Omega_h::LOs& tgt_faces2nodes, const Omega_h::LOs& src_faces2nodes,
-  TriangleOp&& op)
+  const Omega_h::LOs& tgt_elems2nodes, const Omega_h::LOs& src_elems2nodes,
+  SimplexOp&& op)
 {
   auto tgt_elm_vert_coords =
-    get_vert_coords_of_elem(tgt_coords, tgt_faces2nodes, elm);
+    get_vert_coords_of_elem<2>(tgt_coords, tgt_elems2nodes, elm);
   const int start = intersection.tgt2src_offsets[elm];
   const int end = intersection.tgt2src_offsets[elm + 1];
 
   for (int i = start; i < end; ++i) {
     const int current_src_elm = intersection.tgt2src_indices[i];
     auto src_elm_vert_coords =
-      get_vert_coords_of_elem(src_coords, src_faces2nodes, current_src_elm);
+      get_vert_coords_of_elem<2>(src_coords, src_elems2nodes, current_src_elm);
     r3d::Polytope<2> poly;
     r3d::intersect_simplices(poly, tgt_elm_vert_coords, src_elm_vert_coords);
     auto nverts = RemoveDuplicateVerticesAndFixLinks(poly, 1e-12);
@@ -229,45 +226,216 @@ OMEGA_H_INLINE void ForEachIntersectionSubtriangle(
       Omega_h::Real area =
         Kokkos::fabs(Omega_h::triangle_area_from_basis(basis));
 
-      const double eps_area = abs_tol + rel_tol * poly_area;
+      const double eps_area =
+        PCMS_INTERSECTION_ABS_TOL + PCMS_INTERSECTION_REL_TOL * poly_area;
       if (area <= eps_area) {
         continue;
       }
 
-      op(tri_coords, tgt_elm_vert_coords, src_elm_vert_coords, current_src_elm,
-         area);
+      op(tri_coords, current_src_elm, area);
     }
   }
 }
 
-// Barycentric integration points and weights for a reference triangle, taken
-// from MeshField's predefined triangle quadrature rules and staged on device
-// for use in element integration kernels.
+// Walk each face of a clipped r3d polyhedron exactly once and fan it into
+// triangles, invoking op(v0, v1, v2) for each triangle (v0 is the face's anchor
+// vertex, so a face with k vertices yields k-2 triangles). Every vertex of an
+// r3d clipped Polytope<3> has exactly three face-neighbors (pnbrs); marking
+// each directed edge as it is consumed guarantees every face is emitted once.
+// This mirrors the edge-marking traversal buried inside r3d::reduce, which r3d
+// does not expose for reuse, so the traversal is reproduced here once and
+// shared. Vertices arrive as r3d::Vector<3> (indexable [0..2]).
+template <typename TriangleOp>
+OMEGA_H_INLINE void ForEachPolytopeFaceTriangle(const r3d::Polytope<3>& poly,
+                                                TriangleOp&& op)
+{
+  // emarks[v][p] == 1 once the directed edge (v, pnbr p) has been consumed.
+  int emarks[r3d::Polytope<3>::max_verts][3] = {{}};
+  for (int vstart = 0; vstart < poly.nverts; ++vstart) {
+    for (int pstart = 0; pstart < 3; ++pstart) {
+      if (emarks[vstart][pstart]) {
+        continue;
+      }
+      int pnext = pstart;
+      int vcur = vstart;
+      emarks[vcur][pnext] = 1;
+      int vnext = poly.verts[vcur].pnbrs[pnext];
+      const auto face_v0 = poly.verts[vcur].pos;
+
+      // Move to the second edge of this face.
+      int np = 0;
+      for (np = 0; np < 3; ++np) {
+        if (poly.verts[vnext].pnbrs[np] == vcur) {
+          break;
+        }
+      }
+      vcur = vnext;
+      pnext = (np + 1) % 3;
+      emarks[vcur][pnext] = 1;
+      vnext = poly.verts[vcur].pnbrs[pnext];
+
+      // Fan the face into triangles anchored at face_v0.
+      while (vnext != vstart) {
+        op(face_v0, poly.verts[vnext].pos, poly.verts[vcur].pos);
+
+        // Advance around the face.
+        for (np = 0; np < 3; ++np) {
+          if (poly.verts[vnext].pnbrs[np] == vcur) {
+            break;
+          }
+        }
+        vcur = vnext;
+        pnext = (np + 1) % 3;
+        emarks[vcur][pnext] = 1;
+        vnext = poly.verts[vcur].pnbrs[pnext];
+      }
+    }
+  }
+}
+
+// 3D: star-decompose the clipped intersection polyhedron into tetrahedra from
+// its centroid. The centroid lies strictly inside the convex intersection, so
+// lifting each boundary-face triangle (enumerated by
+// ForEachPolytopeFaceTriangle) to the centroid tiles the polyhedron without
+// overlap; op(sub_tet, src_elm, volume) fires for each non-degenerate piece.
+template <typename SimplexOp>
+OMEGA_H_INLINE void ForEachIntersectionSubtetImpl(
+  const int elm, const IntersectionResults& intersection,
+  const Omega_h::Reals& tgt_coords, const Omega_h::Reals& src_coords,
+  const Omega_h::LOs& tgt_elems2nodes, const Omega_h::LOs& src_elems2nodes,
+  SimplexOp&& op)
+{
+  auto tgt_elm_vert_coords =
+    get_vert_coords_of_elem<3>(tgt_coords, tgt_elems2nodes, elm);
+  const int start = intersection.tgt2src_offsets[elm];
+  const int end = intersection.tgt2src_offsets[elm + 1];
+
+  for (int i = start; i < end; ++i) {
+    const int current_src_elm = intersection.tgt2src_indices[i];
+    auto src_elm_vert_coords =
+      get_vert_coords_of_elem<3>(src_coords, src_elems2nodes, current_src_elm);
+    r3d::Polytope<3> poly;
+    r3d::intersect_simplices(poly, tgt_elm_vert_coords, src_elm_vert_coords);
+    if (poly.nverts < 4) {
+      continue;
+    }
+    const double poly_vol = Kokkos::fabs(r3d::measure(poly));
+    const double eps_vol =
+      PCMS_INTERSECTION_ABS_TOL + PCMS_INTERSECTION_REL_TOL * poly_vol;
+
+    // Centroid of the (convex) intersection polyhedron: interior apex.
+    Omega_h::Vector<3> apex = {0.0, 0.0, 0.0};
+    for (int v = 0; v < poly.nverts; ++v) {
+      apex[0] += poly.verts[v].pos[0];
+      apex[1] += poly.verts[v].pos[1];
+      apex[2] += poly.verts[v].pos[2];
+    }
+    apex[0] /= poly.nverts;
+    apex[1] /= poly.nverts;
+    apex[2] /= poly.nverts;
+
+    // Lift each boundary-face triangle to the interior centroid to form a tet.
+    ForEachPolytopeFaceTriangle(poly, [&](const r3d::Vector<3>& a,
+                                          const r3d::Vector<3>& b,
+                                          const r3d::Vector<3>& c) {
+      Omega_h::Few<Omega_h::Vector<3>, 4> tet_coords;
+      tet_coords[0] = apex;
+      tet_coords[1] = {a[0], a[1], a[2]};
+      tet_coords[2] = {b[0], b[1], b[2]};
+      tet_coords[3] = {c[0], c[1], c[2]};
+
+      Omega_h::Few<Omega_h::Vector<3>, 3> basis;
+      basis[0] = tet_coords[1] - tet_coords[0];
+      basis[1] = tet_coords[2] - tet_coords[0];
+      basis[2] = tet_coords[3] - tet_coords[0];
+
+      const Omega_h::Real vol =
+        Kokkos::fabs(Omega_h::tet_volume_from_basis(basis));
+      if (vol > eps_vol) {
+        op(tet_coords, current_src_elm, vol);
+      }
+    });
+  }
+}
+
+// Dimension-generic driver over the sub-simplices (triangles in 2D, tets in 3D)
+// that tile each target element's intersection with the source mesh. Invokes
+// op(sub_simplex_coords, src_elm, measure) for every non-degenerate piece.
+template <int Dim, typename SimplexOp>
+OMEGA_H_INLINE void ForEachIntersectionSubsimplex(
+  const int elm, const IntersectionResults& intersection,
+  const Omega_h::Reals& tgt_coords, const Omega_h::Reals& src_coords,
+  const Omega_h::LOs& tgt_elems2nodes, const Omega_h::LOs& src_elems2nodes,
+  SimplexOp&& op)
+{
+  if constexpr (Dim == 3) {
+    ForEachIntersectionSubtetImpl(elm, intersection, tgt_coords, src_coords,
+                                  tgt_elems2nodes, src_elems2nodes, op);
+  } else {
+    ForEachIntersectionSubtriangleImpl(elm, intersection, tgt_coords,
+                                       src_coords, tgt_elems2nodes,
+                                       src_elems2nodes, op);
+  }
+}
+
+// Maps spatial dimension to the MeshField simplex topology whose reference
+// quadrature rules we use (triangle in 2D, tetrahedron in 3D).
+template <int Dim>
+struct SimplexTopology;
+template <>
+struct SimplexTopology<2>
+{
+  static constexpr MeshField::Mesh_Topology value = MeshField::Triangle;
+};
+template <>
+struct SimplexTopology<3>
+{
+  static constexpr MeshField::Mesh_Topology value = MeshField::Tetrahedron;
+};
+
+// Barycentric integration points and weights for a reference simplex (triangle
+// in 2D, tetrahedron in 3D), taken from MeshField's predefined quadrature rules
+// and staged on device for use in element integration kernels.
 //
 // MeshField::getIntegrationPoints returns a host std::vector, which cannot be
 // dereferenced inside a device kernel, so the (tiny) rule is copied into device
-// Kokkos views once at construction.
+// Kokkos views once at construction. Each barycentric point has Dim+1
+// components.
 //
 // The quadrature order is a runtime argument because the required polynomial
 // accuracy depends on the source and target element orders (degree =
 // source_order + target_order), which are only known at construction.
+template <int Dim>
 struct IntegrationData
 {
-  Kokkos::View<MeshField::Vector2*> bary_coords; // barycentric coordinates
-  Kokkos::View<Omega_h::Real*> weights;          // quadrature weights
+  Kokkos::View<Omega_h::Real * [Dim + 1]>
+    bary_coords;                        // barycentric coordinates
+  Kokkos::View<Omega_h::Real*> weights; // quadrature weights
 
   explicit IntegrationData(int order)
   {
-    auto ip_vec = MeshField::getIntegrationPoints<MeshField::Triangle>(order);
+    auto ip_vec =
+      MeshField::getIntegrationPoints<SimplexTopology<Dim>::value>(order);
     const std::size_t num_ip = ip_vec.size();
 
-    bary_coords = Kokkos::View<MeshField::Vector2*>("bary_coords", num_ip);
+    bary_coords =
+      Kokkos::View<Omega_h::Real * [Dim + 1]>("bary_coords", num_ip);
     weights = Kokkos::View<Omega_h::Real*>("weights", num_ip);
 
     auto bary_coords_host = Kokkos::create_mirror_view(bary_coords);
     auto weights_host = Kokkos::create_mirror_view(weights);
     for (std::size_t i = 0; i < num_ip; ++i) {
-      bary_coords_host(i) = ip_vec[i].param;
+      // MeshField returns points in reduced parametric coordinates: only the
+      // first Dim barycentric components are stored, with the last implied by
+      // the partition of unity. Expand to the full Dim+1 barycentric form
+      // consumed by GlobalFromBarycentric.
+      Omega_h::Real last = 1.0;
+      for (int d = 0; d < Dim; ++d) {
+        const Omega_h::Real xi = ip_vec[i].param[d];
+        bary_coords_host(i, d) = xi;
+        last -= xi;
+      }
+      bary_coords_host(i, Dim) = last;
       weights_host(i) = ip_vec[i].weight;
     }
     Kokkos::deep_copy(bary_coords, bary_coords_host);
@@ -277,9 +445,10 @@ struct IntegrationData
   int size() const { return bary_coords.extent(0); }
 };
 
-// Target Lagrange basis on a triangle, parameterized by element order, for the
+// Target Lagrange basis on a simplex (triangle in 2D, tetrahedron in 3D),
+// parameterized by spatial dimension and element order, for the
 // conservative-projection RHS assembly. Order 0 is a single element-constant
-// DOF; order 1 is the three vertex (barycentric) DOFs. Higher orders slot in as
+// DOF; order 1 is the Dim+1 vertex (barycentric) DOFs. Higher orders slot in as
 // additional specializations, kept in lock-step with element_dispatch.h.
 //
 // Each specialization provides, for a target element `elm` with local vertex
@@ -287,40 +456,39 @@ struct IntegrationData
 //   ndof            number of local target DOFs
 //   Index(...)      active PETSc row for local dof k
 //   Values(pt, ...) basis values at the (global) integration point pt
-template <int Order>
-struct TargetTriBasis;
+template <int Dim, int Order>
+struct TargetSimplexBasis;
 
-template <>
-struct TargetTriBasis<0>
+template <int Dim>
+struct TargetSimplexBasis<Dim, 0>
 {
   static constexpr int ndof = 1;
 
   template <typename Permutation>
-  KOKKOS_INLINE_FUNCTION static LO Index(const Permutation& permutation,
-                                         int elm,
-                                         const Omega_h::Few<Omega_h::LO, 3>&,
-                                         int /*k*/)
+  KOKKOS_INLINE_FUNCTION static LO Index(
+    const Permutation& permutation, int elm,
+    const Omega_h::Few<Omega_h::LO, Dim + 1>&, int /*k*/)
   {
     return permutation(elm);
   }
 
   KOKKOS_INLINE_FUNCTION static void Values(
-    const Omega_h::Vector<2>&, const Omega_h::Few<Omega_h::Vector<2>, 3>&,
-    Omega_h::Real out[ndof])
+    const Omega_h::Vector<Dim>&,
+    const Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1>&, Omega_h::Real out[ndof])
   {
     out[0] = 1.0;
   }
 };
 
-template <>
-struct TargetTriBasis<1>
+template <int Dim>
+struct TargetSimplexBasis<Dim, 1>
 {
-  static constexpr int ndof = 3;
+  static constexpr int ndof = Dim + 1;
 
   template <typename Permutation>
   KOKKOS_INLINE_FUNCTION static LO Index(
     const Permutation& permutation, int /*elm*/,
-    const Omega_h::Few<Omega_h::LO, 3>& verts, int k)
+    const Omega_h::Few<Omega_h::LO, Dim + 1>& verts, int k)
   {
     return permutation(verts[k]);
   }
@@ -328,14 +496,14 @@ struct TargetTriBasis<1>
   // P1 basis functions are the barycentric coordinates of the target element
   // evaluated at the (global) integration point.
   KOKKOS_INLINE_FUNCTION static void Values(
-    const Omega_h::Vector<2>& pt,
-    const Omega_h::Few<Omega_h::Vector<2>, 3>& tgt_verts,
+    const Omega_h::Vector<Dim>& pt,
+    const Omega_h::Few<Omega_h::Vector<Dim>, Dim + 1>& tgt_verts,
     Omega_h::Real out[ndof])
   {
-    const auto bary = Omega_h::barycentric_from_global<2, 2>(pt, tgt_verts);
-    out[0] = bary[0];
-    out[1] = bary[1];
-    out[2] = bary[2];
+    const auto bary = Omega_h::barycentric_from_global<Dim, Dim>(pt, tgt_verts);
+    for (int i = 0; i < ndof; ++i) {
+      out[i] = bary[i];
+    }
   }
 };
 

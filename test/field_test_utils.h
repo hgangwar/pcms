@@ -44,6 +44,11 @@ KOKKOS_INLINE_FUNCTION Real linear_f(Real x, Real y)
   return x + 2.0 * y;
 }
 
+KOKKOS_INLINE_FUNCTION Real linear_f_3d(Real x, Real y)
+{
+  return x + 2.0 * y;
+}
+
 // Interior test points for a unit [0,1]^2 box mesh.
 inline std::vector<Real> StandardEvalCoords2D()
 {
@@ -60,6 +65,21 @@ inline std::vector<Real> StandardOutsideCoords2D()
 // Builds a unit-square 2D simplex mesh from the given element connectivity and
 // adds the geometric classification tags required to build an Omega_h-backed
 // Lagrange function space.
+//
+
+// Geometric classification tags required by OmegaHLagrangeLayout.
+inline void AddDefaultClassification(Omega_h::Mesh& mesh)
+{
+  for (Omega_h::Int dim = 0; dim <= mesh.dim(); ++dim) {
+    mesh.add_tag<Omega_h::I8>(
+      dim, "class_dim", 1,
+      Omega_h::Read<Omega_h::I8>(mesh.nents(dim), Omega_h::I8(dim)));
+    mesh.add_tag<Omega_h::ClassId>(
+      dim, "class_id", 1,
+      Omega_h::Read<Omega_h::ClassId>(mesh.nents(dim), Omega_h::ClassId(0)));
+  }
+}
+
 inline Omega_h::Mesh BuildUnitSquare(Omega_h::Library& lib,
                                      const Omega_h::LOs& ev2v)
 {
@@ -71,14 +91,7 @@ inline Omega_h::Mesh BuildUnitSquare(Omega_h::Library& lib,
   });
   Omega_h::Mesh mesh(&lib);
   Omega_h::build_from_elems_and_coords(&mesh, OMEGA_H_SIMPLEX, 2, ev2v, coords);
-  for (Omega_h::Int dim = 0; dim <= 2; ++dim) {
-    mesh.add_tag<Omega_h::I8>(
-      dim, "class_dim", 1,
-      Omega_h::Read<Omega_h::I8>(mesh.nents(dim), Omega_h::I8(dim)));
-    mesh.add_tag<Omega_h::ClassId>(
-      dim, "class_id", 1,
-      Omega_h::Read<Omega_h::ClassId>(mesh.nents(dim), Omega_h::ClassId(0)));
-  }
+  AddDefaultClassification(mesh);
   return mesh;
 }
 
@@ -89,6 +102,44 @@ inline Omega_h::Mesh BuildUnitSquare(Omega_h::Library& lib, int diagonal)
   return BuildUnitSquare(lib, (diagonal == 0)
                                 ? Omega_h::LOs({0, 1, 3, 1, 2, 3})
                                 : Omega_h::LOs({0, 1, 2, 0, 2, 3}));
+}
+
+// Tetrahedral mesh of [0,1]^3. build_box already adds classification.
+inline Omega_h::Mesh BuildUnitCube(Omega_h::Library& lib, int n)
+{
+  return Omega_h::build_box(lib.world(), OMEGA_H_SIMPLEX, 1.0, 1.0, 1.0, n, n,
+                            n);
+}
+
+inline Omega_h::Mesh BuildTet(Omega_h::Library& lib,
+                              const Omega_h::Reals& coords)
+{
+
+  Omega_h::Mesh mesh(&lib);
+  const Omega_h::LOs ev2v = Omega_h::LOs({0, 1, 2, 3});
+  Omega_h::build_from_elems_and_coords(&mesh, OMEGA_H_SIMPLEX, 3, ev2v, coords);
+  AddDefaultClassification(mesh);
+  return mesh;
+}
+
+// Reference tet: (0,0,0), (1,0,0), (0,1,0), (0,0,1). Volume 1/6.
+// reversed=true swaps the last two verts so the signed volume is negative.
+inline Omega_h::Mesh BuildReferenceTet(Omega_h::Library& lib)
+{
+  return BuildTet(lib, Omega_h::Reals({
+                         0.0,
+                         0.0,
+                         0.0,
+                         1.0,
+                         0.0,
+                         0.0,
+                         0.0,
+                         1.0,
+                         0.0,
+                         0.0,
+                         0.0,
+                         1.0,
+                       }));
 }
 
 inline std::shared_ptr<LagrangeFunctionSpace> MakeP1Space(
