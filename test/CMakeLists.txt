@@ -402,7 +402,9 @@ if(Catch2_FOUND)
   add_executable(test_transient_timestepper test_transient_timestepper.cpp)
   target_link_libraries(test_transient_timestepper
           PRIVATE Catch2::Catch2WithMain pcms::transient)
-
+  add_executable(test_transient_accelerator test_transient_accelerator.cpp)
+  target_link_libraries(test_transient_accelerator
+          PRIVATE Catch2::Catch2WithMain pcms::transient)
   set(PCMS_UNIT_TEST_SOURCES unit_test_main.cpp test_coordinate_transform.cpp
                              test_coordinate.cpp test_bounding_box.cpp)
   if(PCMS_ENABLE_XGC)
