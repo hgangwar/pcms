@@ -10,7 +10,7 @@ Real FixedTimestepper::InitialStep() const
   return dt_;
 }
 
-std::pair<bool, Real> FixedTimestepper::Update(Real, Real)
+StepDecision FixedTimestepper::Update(Real, Real)
 {
   return {true, dt_};
 }

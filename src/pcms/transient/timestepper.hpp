@@ -2,10 +2,18 @@
 #define PCMS_TRANSIENT_TIMESTEPPER_HPP
 
 #include "pcms/utility/types.h"
-#include <utility>
 
 namespace pcms::transient
 {
+
+// Result of Timestepper::Update.
+struct StepDecision
+{
+  // Whether the completed time window is accepted.
+  bool accepted;
+  // Positive step size to try next.
+  Real next_step;
+};
 
 // Decides whether to accept a completed time window and selects the next step.
 class Timestepper
@@ -16,7 +24,7 @@ public:
 
   // Given the current time step that was actually completed and its normalized
   // error, return whether to accept it and the positive step size to try next.
-  virtual std::pair<bool, Real> Update(Real dt, Real err) = 0;
+  [[nodiscard]] virtual StepDecision Update(Real dt, Real err) = 0;
 
   virtual ~Timestepper() = default;
 };
@@ -32,7 +40,7 @@ public:
   Real InitialStep() const override;
 
   // Keep the configured fixed time step.
-  std::pair<bool, Real> Update(Real dt, Real err) override;
+  StepDecision Update(Real dt, Real err) override;
 
 private:
   Real dt_;
